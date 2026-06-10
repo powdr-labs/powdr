@@ -41,7 +41,7 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
 ) -> Result<(SymbolicMachine<T>, ColumnAllocator), crate::constraint_optimizer::Error>
 where
     T: FieldElement,
-    B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone + Sync,
+    B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
     BusTypes: PartialEq + Eq + Clone + Display,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {

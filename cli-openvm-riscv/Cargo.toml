@@ -38,6 +38,7 @@ tracing.workspace = true
 tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 tracing-forest = "0.1"
 tracing-log = "0.2"
+rayon = "1.10.0"
 metrics.workspace = true
 metrics-tracing-context = "0.16.0"
 metrics-util = "0.17.0"

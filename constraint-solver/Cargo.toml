@@ -20,7 +20,6 @@ serde.workspace = true
 
 crepe = "0.2.0"
 derivative.workspace = true
-rayon = "1.10.0"
 rustc-hash = "2"
 
 [dev-dependencies]

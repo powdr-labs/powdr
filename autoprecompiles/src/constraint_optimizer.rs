@@ -20,7 +20,6 @@ use powdr_constraint_solver::{
     utils::get_all_possible_assignments,
 };
 use powdr_number::FieldElement;
-use rayon::prelude::*;
 use serde::Serialize;
 
 use crate::{
@@ -51,11 +50,11 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 #[allow(clippy::too_many_arguments)]
 pub fn optimize_constraints<
     P: FieldElement,
-    V: Ord + Clone + Eq + Hash + Display + Serialize + Send + Sync,
+    V: Ord + Clone + Eq + Hash + Display + Serialize,
     M: MemoryBusInteraction<P, V>,
 >(
     constraint_system: IndexedConstraintSystem<P, V>,
-    solver: &mut (impl Solver<P, V> + Sync),
+    solver: &mut impl Solver<P, V>,
     bus_interaction_handler: impl BusInteractionHandler<P>
         + IsBusStateful<P>
         + RangeConstraintHandler<P>
@@ -800,15 +799,12 @@ fn simplification_state_digest<T: FieldElement, V: Clone + Ord + Eq + Hash + Dis
 /// the variables come from.
 pub fn simplify_constraints_using_exhaustive_search<
     T: FieldElement,
-    V: Clone + Ord + Eq + Hash + Display + Send + Sync,
+    V: Clone + Ord + Eq + Hash + Display,
 >(
     constraint_system: IndexedConstraintSystem<T, V>,
-    range_constraints: &(impl RangeConstraintProvider<T, V> + Sync),
+    range_constraints: &impl RangeConstraintProvider<T, V>,
     cache: &mut ExhaustiveSearchSimplificationCache<V>,
 ) -> IndexedConstraintSystem<T, V> {
-    // The variable sets can be processed in parallel: each of them only reads
-    // the constraint system and the range constraints, and the resulting
-    // substitutions are combined in order below.
     let sets_with_digests =
         exhaustive_search::get_brute_force_candidates(&constraint_system, range_constraints)
             .map(|variable_set| {
@@ -826,7 +822,7 @@ pub fn simplify_constraints_using_exhaustive_search<
             })
             .collect_vec();
     let substitutions_per_set = sets_with_digests
-        .par_iter()
+        .iter()
         .map(|(variable_set, _)| {
             simplifications_for_variable_set(&constraint_system, variable_set, range_constraints)
         })

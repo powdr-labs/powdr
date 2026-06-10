@@ -25,11 +25,11 @@ mod var_transformation;
 /// Solve a constraint system, i.e. derive assignments for variables in the system.
 pub fn solve_system<T, V>(
     constraint_system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + Sync,
+    bus_interaction_handler: impl BusInteractionHandler<T>,
 ) -> Result<Vec<VariableAssignment<T, V>>, Error>
 where
     T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display + Send + Sync,
+    V: Ord + Clone + Hash + Eq + Display,
 {
     new_solver(constraint_system, bus_interaction_handler).solve()
 }
@@ -37,11 +37,11 @@ where
 /// Creates a new solver for the given system and bus interaction handler.
 pub fn new_solver<T, V>(
     constraint_system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + Sync,
-) -> impl Solver<T, V> + Sync
+    bus_interaction_handler: impl BusInteractionHandler<T>,
+) -> impl Solver<T, V>
 where
     T: FieldElement,
-    V: Ord + Clone + Hash + Eq + Display + Send + Sync,
+    V: Ord + Clone + Hash + Eq + Display,
 {
     let mut solver = VarTransformation::new(BaseSolver::<_, _, _, VarDispenserImpl>::new(
         bus_interaction_handler,

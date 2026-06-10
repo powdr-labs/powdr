@@ -23,7 +23,7 @@ fn constant(value: u64) -> GroupedExpression<GoldilocksField, Var> {
     GroupedExpression::from_number(GoldilocksField::from(value))
 }
 
-pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField> + Sync>(
+pub fn assert_solve_result<B: BusInteractionHandler<GoldilocksField>>(
     system: ConstraintSystem<GoldilocksField, Var>,
     bus_interaction_handler: B,
     expected_assignments: Vec<(Var, GoldilocksField)>,

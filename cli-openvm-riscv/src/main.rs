@@ -13,6 +13,7 @@ use powdr_openvm_riscv::{
     optimize_unoptimized_apc, setup, CompiledProgram, GuestOptions, OriginalCompiledProgram,
     RiscvISA, UNOPT_APC_PREFIX,
 };
+use rayon::prelude::*;
 
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
@@ -621,7 +622,15 @@ fn run_optimize_apc(args: &OptimizeApcArgs) {
             files.push(p.clone());
         }
     }
-    files.sort();
+    // Largest inputs first (longest-processing-time scheduling), so that the
+    // most expensive optimizations cannot start late and extend the overall
+    // runtime. The file size is proportional to the machine size, which is a
+    // good predictor of the optimization time. Ties (and close calls) are
+    // broken by name for determinism.
+    files.sort_by_key(|path| {
+        let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        (std::cmp::Reverse(size), path.clone())
+    });
     if files.is_empty() {
         Cli::command()
             .error(
@@ -635,8 +644,7 @@ fn run_optimize_apc(args: &OptimizeApcArgs) {
     }
 
     let repeat = args.repeat.max(1);
-    let mut optimized = 0usize;
-    for path in &files {
+    let process = |path: &PathBuf| -> usize {
         let unoptimized_apc: AdapterUnoptimizedApc<BabyBearOpenVmApcAdapter<'static, RiscvISA>> = {
             let file = fs::File::open(path).expect("Failed to open unoptimized APC");
             serde_cbor::from_reader(file).expect("Failed to deserialize unoptimized APC")
@@ -647,9 +655,8 @@ fn run_optimize_apc(args: &OptimizeApcArgs) {
                 .first()
                 .is_some_and(|pc| args.start_pc.contains(pc))
         {
-            continue;
+            return 0;
         }
-        optimized += 1;
 
         let mut last = None;
         for run in 0..repeat {
@@ -675,7 +682,26 @@ fn run_optimize_apc(args: &OptimizeApcArgs) {
                 .expect("Failed to create output file");
             serde_cbor::to_writer(f, &result.apc).expect("Failed to serialize optimized APC");
         }
-    }
+        1
+    };
+    // Optimize the inputs in parallel, like the APC generation pipeline does.
+    // Strictly in-order greedy queue: every idle worker picks up the largest
+    // remaining input. (A plain `par_iter` would split the input range into
+    // per-worker segments instead, defeating largest-first scheduling.)
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let optimized = (0..rayon::current_num_threads())
+        .into_par_iter()
+        .map(|_| {
+            let mut optimized = 0;
+            loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let Some(path) = files.get(i) else {
+                    return optimized;
+                };
+                optimized += process(path);
+            }
+        })
+        .sum::<usize>();
 
     if optimized == 0 {
         tracing::warn!(
