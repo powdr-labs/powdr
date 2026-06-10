@@ -1,6 +1,7 @@
 use derivative::Derivative;
 use itertools::Itertools;
 use powdr_number::FieldElement;
+use rayon::prelude::*;
 
 use crate::constraint_system::{
     AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintRef,
@@ -142,10 +143,10 @@ impl<T: FieldElement + Display, V: Clone + Ord + Hash + Display, BusInter, VD> D
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T>, VD: VarDispenser<V>> Solver<T, V>
+impl<T, V, BusInter: BusInteractionHandler<T> + Sync, VD: VarDispenser<V>> Solver<T, V>
     for BaseSolver<T, V, BusInter, VD>
 where
-    V: Ord + Clone + Hash + Eq + Display,
+    V: Ord + Clone + Hash + Eq + Display + Send + Sync,
     T: FieldElement,
 {
     fn solve(&mut self) -> Result<Vec<VariableAssignment<T, V>>, Error> {
@@ -306,9 +307,10 @@ where
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T>, VD: VarDispenser<V>> BaseSolver<T, V, BusInter, VD>
+impl<T, V, BusInter: BusInteractionHandler<T> + Sync, VD: VarDispenser<V>>
+    BaseSolver<T, V, BusInter, VD>
 where
-    V: Ord + Clone + Hash + Eq + Display,
+    V: Ord + Clone + Hash + Eq + Display + Send + Sync,
     T: FieldElement,
 {
     /// Tries to performs boolean extraction on `constr`, i.e. tries to turn quadratic constraints into affine constraints
@@ -370,9 +372,9 @@ where
     }
 }
 
-impl<T, V, BusInter: BusInteractionHandler<T>, VD> BaseSolver<T, V, BusInter, VD>
+impl<T, V, BusInter: BusInteractionHandler<T> + Sync, VD> BaseSolver<T, V, BusInter, VD>
 where
-    V: Ord + Clone + Hash + Eq + Display,
+    V: Ord + Clone + Hash + Eq + Display + Send + Sync,
     T: FieldElement,
     VD: VarDispenser<V>,
 {
@@ -446,35 +448,82 @@ where
         // re-checked if something relevant to them changed since.
         let updated_variables = std::mem::take(&mut self.variables_updated_since_exhaustive_search);
 
-        let mut progress = false;
+        let to_process = variable_sets
+            .into_iter()
+            .filter_map(|mut variable_set| {
+                variable_set.retain(|v| {
+                    self.range_constraints
+                        .get(v)
+                        .try_to_single_value()
+                        .is_none()
+                });
+                // Skip variable sets that we have processed before, that did
+                // not yield new information and for which nothing they depend
+                // on (the range constraints of their variables and the
+                // constraints referencing them) has changed since: they would
+                // not yield new information now either.
+                (!self
+                    .unsuccessful_exhaustive_search_sets
+                    .contains(&variable_set)
+                    || self.is_affected_by_variable_updates(&variable_set, &updated_variables))
+                .then_some(variable_set)
+            })
+            .collect_vec();
 
-        for mut variable_set in variable_sets {
-            variable_set.retain(|v| {
-                self.range_constraints
-                    .get(v)
-                    .try_to_single_value()
-                    .is_none()
-            });
-            if self
-                .unsuccessful_exhaustive_search_sets
-                .contains(&variable_set)
-                && !self.is_affected_by_variable_updates(&variable_set, &updated_variables)
-            {
-                // We have processed this variable set before, it did not
-                // yield new information and nothing it depends on (the range
-                // constraints of its variables and the constraints referencing
-                // them) has changed since, so it would not yield new
-                // information now either.
-                // Updates that happen during this pass are recorded and
-                // checked in the next pass.
-                continue;
-            }
-            match exhaustive_search::exhaustive_search_on_variable_set(
-                self.constraint_system.system(),
+        // Perform the search for all sets in parallel, against the current state.
+        // The results are applied sequentially below. A pre-computed result is
+        // only used if applying the results of earlier sets did not touch
+        // anything the set depends on, so the outcome is exactly the same as if
+        // the searches were performed sequentially.
+        let system = self.constraint_system.system();
+        let range_constraints = &self.range_constraints;
+        let bus_interaction_handler = &self.bus_interaction_handler;
+        let results = to_process
+            .par_iter()
+            .map(|variable_set| {
+                exhaustive_search::exhaustive_search_on_variable_set(
+                    system,
+                    variable_set,
+                    range_constraints,
+                    bus_interaction_handler,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let mut progress = false;
+        for (mut variable_set, result) in to_process.into_iter().zip(results) {
+            // `variables_updated_since_exhaustive_search` contains exactly the
+            // variables updated by the results applied so far in this loop.
+            let result = if !self.is_affected_by_variable_updates(
                 &variable_set,
-                &*self,
-                &self.bus_interaction_handler,
+                &self.variables_updated_since_exhaustive_search,
             ) {
+                result
+            } else {
+                // Applying the results of earlier sets changed something this
+                // set depends on: redo the search on the current state,
+                // mirroring sequential processing.
+                variable_set.retain(|v| {
+                    self.range_constraints
+                        .get(v)
+                        .try_to_single_value()
+                        .is_none()
+                });
+                if self
+                    .unsuccessful_exhaustive_search_sets
+                    .contains(&variable_set)
+                    && !self.is_affected_by_variable_updates(&variable_set, &updated_variables)
+                {
+                    continue;
+                }
+                exhaustive_search::exhaustive_search_on_variable_set(
+                    self.constraint_system.system(),
+                    &variable_set,
+                    &self.range_constraints,
+                    &self.bus_interaction_handler,
+                )
+            };
+            match result {
                 Ok(assignments) if assignments.is_empty() => {
                     // No new information was found.
                     self.unsuccessful_exhaustive_search_sets

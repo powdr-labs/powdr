@@ -9,7 +9,7 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::{
-        AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
+        AlgebraicConstraint, BusInteraction, BusInteractionHandler, ConstraintRef, ConstraintSystem,
     },
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     indexed_constraint_system::IndexedConstraintSystem,
@@ -20,6 +20,7 @@ use powdr_constraint_solver::{
     utils::get_all_possible_assignments,
 };
 use powdr_number::FieldElement;
+use rayon::prelude::*;
 use serde::Serialize;
 
 use crate::{
@@ -50,11 +51,11 @@ impl From<powdr_constraint_solver::solver::Error> for Error {
 #[allow(clippy::too_many_arguments)]
 pub fn optimize_constraints<
     P: FieldElement,
-    V: Ord + Clone + Eq + Hash + Display + Serialize,
+    V: Ord + Clone + Eq + Hash + Display + Serialize + Send + Sync,
     M: MemoryBusInteraction<P, V>,
 >(
     constraint_system: IndexedConstraintSystem<P, V>,
-    solver: &mut impl Solver<P, V>,
+    solver: &mut (impl Solver<P, V> + Sync),
     bus_interaction_handler: impl BusInteractionHandler<P>
         + IsBusStateful<P>
         + RangeConstraintHandler<P>
@@ -236,17 +237,24 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display + 
     );
     constraint_system.apply_substitutions(assignments);
 
-    // Now try to replace bus interaction fields that the solver knows to be constant
-    let mut bus_interactions = vec![];
+    // Now try to replace bus interaction fields that the solver knows to be constant.
+    // We first determine the replacements in a read-only pass, so that the expensive
+    // re-indexing of all bus interactions can be skipped if nothing is replaced
+    // (which is the common case after the first pass).
     let mut new_algebraic_constraints = vec![];
-    // We remove all bus interactions because we do not want to change the order.
-    constraint_system.retain_bus_interactions(|bus_interaction| {
-        let mut modified = false;
-        let replacement = bus_interaction
+    let mut replacements: BTreeMap<usize, BusInteraction<GroupedExpression<T, V>>> =
+        BTreeMap::new();
+    for (index, bus_interaction) in constraint_system.bus_interactions().iter().enumerate() {
+        if !bus_interaction
+            .fields()
+            .any(|field| try_replace_by_number(field, solver).is_some())
+        {
+            continue;
+        }
+        let replacement: BusInteraction<_> = bus_interaction
             .fields()
             .map(|field| {
                 if let Some(n) = try_replace_by_number(field, solver) {
-                    modified = true;
                     new_algebraic_constraints
                         .push(AlgebraicConstraint::assert_eq(n.clone(), field.clone()));
                     n
@@ -255,13 +263,24 @@ fn solver_based_optimization<T: FieldElement, V: Clone + Ord + Hash + Display + 
                 }
             })
             .collect();
-        if modified {
-            log::trace!("Replacing bus interaction {bus_interaction} with {replacement}");
-        }
-        bus_interactions.push(replacement);
-        false
-    });
-    constraint_system.add_bus_interactions(bus_interactions);
+        log::trace!("Replacing bus interaction {bus_interaction} with {replacement}");
+        replacements.insert(index, replacement);
+    }
+    if !replacements.is_empty() {
+        // We remove and re-add all bus interactions because we do not want to
+        // change the order.
+        let mut bus_interactions = vec![];
+        let mut index = 0;
+        constraint_system.retain_bus_interactions(|bus_interaction| {
+            bus_interactions.push(match replacements.remove(&index) {
+                Some(replacement) => replacement,
+                None => bus_interaction.clone(),
+            });
+            index += 1;
+            false
+        });
+        constraint_system.add_bus_interactions(bus_interactions);
+    }
     constraint_system.add_algebraic_constraints(new_algebraic_constraints);
     Ok(constraint_system)
 }
@@ -638,6 +657,92 @@ where
     }
 }
 
+/// Computes the simplifications of the expressions of all constraints
+/// referencing `variable_set` that result from exhaustively trying all
+/// assignments of the variable set (see
+/// [`simplify_constraints_using_exhaustive_search`]).
+fn simplifications_for_variable_set<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    constraint_system: &IndexedConstraintSystem<T, V>,
+    variable_set: &BTreeSet<V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> Vec<(GroupedExpression<T, V>, GroupedExpression<T, V>)> {
+    // Collect the unique expressions to track. Make sure that for the same
+    // expression as bus field and algebraic constraint, the algebraic
+    // constraint "wins".
+    let mut expr_indices: BTreeMap<&GroupedExpression<T, V>, usize> = Default::default();
+    let mut exprs: Vec<SimplifiedExpression<T, V>> = Default::default();
+    for (expr, is_alg) in constraint_system
+        .constraints_referencing_variables(variable_set)
+        .flat_map(|constraint| match constraint {
+            ConstraintRef::AlgebraicConstraint(identity) => {
+                vec![(identity.expression, true)]
+            }
+            ConstraintRef::BusInteraction(bus_interaction) => bus_interaction
+                .fields()
+                .map(|field| (field, false))
+                .collect_vec(),
+        })
+    {
+        let index = *expr_indices.entry(expr).or_insert_with(|| {
+            exprs.push(SimplifiedExpression::new(expr, is_alg, variable_set));
+            exprs.len() - 1
+        });
+        exprs[index].is_algebraic_constraint |= is_alg;
+    }
+
+    for assignment in get_all_possible_assignments(variable_set.iter().cloned(), range_constraints)
+    {
+        // First check all algebraic constraints if this is a conflict.
+        let alg_substituted = exprs
+            .iter()
+            .filter(|simp| simp.is_algebraic_constraint)
+            .map(|simp| simp.substitute(&assignment))
+            .collect_vec();
+        if exprs
+            .iter()
+            .filter(|simp| simp.is_algebraic_constraint)
+            .zip(&alg_substituted)
+            .any(|(simp, s)| simp.is_known_nonzero(s))
+        {
+            // Assignment leads to a conflict. This means that there is
+            // an algebraic constraints that rules out this assignment, so
+            // we don't have to consider it.
+            continue;
+        }
+        // No conflict. First, update the algebraic constraints where
+        // we already computed the simplified version.
+        for (simp, s) in exprs
+            .iter_mut()
+            .filter(|simp| simp.is_algebraic_constraint)
+            .zip(alg_substituted)
+        {
+            simp.update(s);
+        }
+        // Now update the bus interaction fields.
+        for simp in exprs
+            .iter_mut()
+            .filter(|simp| !simp.is_algebraic_constraint)
+        {
+            let s = simp.substitute(&assignment);
+            simp.update(s);
+        }
+        // Remove bus interaction fields with conflicting simplifications
+        // This is a performance optimization, saving us time in the loop
+        // above for the next assignment candidate.
+        exprs
+            .retain(|simp| simp.is_algebraic_constraint || !simp.has_conflicting_simplifications());
+    }
+
+    exprs
+        .into_iter()
+        .filter_map(|simp| {
+            let e = simp.expression;
+            simp.into_simplification()
+                .and_then(|s| (s != *e).then(|| (e.clone(), s)))
+        })
+        .collect()
+}
+
 /// Tries to simplify algebraic constraints and bus interaction fields by performing exhaustive
 /// search over variables with few possible values. If all assignments (that do not lead to a
 /// violated algebraic constraints) turn the expression into the same, simpler expression,
@@ -646,91 +751,25 @@ where
 /// the variables come from.
 pub fn simplify_constraints_using_exhaustive_search<
     T: FieldElement,
-    V: Clone + Ord + Eq + Hash + Display,
+    V: Clone + Ord + Eq + Hash + Display + Send + Sync,
 >(
     constraint_system: IndexedConstraintSystem<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
+    range_constraints: &(impl RangeConstraintProvider<T, V> + Sync),
 ) -> IndexedConstraintSystem<T, V> {
-    let mut substitutions: BTreeMap<GroupedExpression<T, V>, GroupedExpression<T, V>> =
-        BTreeMap::default();
-    for variable_set in
+    // The variable sets can be processed in parallel: each of them only reads
+    // the constraint system and the range constraints, and the resulting
+    // substitutions are combined in order below.
+    let variable_sets =
         exhaustive_search::get_brute_force_candidates(&constraint_system, range_constraints)
-    {
-        // Collect the unique expressions to track. Make sure that for the same
-        // expression as bus field and algebraic constraint, the algebraic
-        // constraint "wins".
-        let mut expr_indices: BTreeMap<&GroupedExpression<T, V>, usize> = Default::default();
-        let mut exprs: Vec<SimplifiedExpression<T, V>> = Default::default();
-        for (expr, is_alg) in constraint_system
-            .constraints_referencing_variables(&variable_set)
-            .flat_map(|constraint| match constraint {
-                ConstraintRef::AlgebraicConstraint(identity) => {
-                    vec![(identity.expression, true)]
-                }
-                ConstraintRef::BusInteraction(bus_interaction) => bus_interaction
-                    .fields()
-                    .map(|field| (field, false))
-                    .collect_vec(),
-            })
-        {
-            let index = *expr_indices.entry(expr).or_insert_with(|| {
-                exprs.push(SimplifiedExpression::new(expr, is_alg, &variable_set));
-                exprs.len() - 1
-            });
-            exprs[index].is_algebraic_constraint |= is_alg;
-        }
-
-        for assignment in
-            get_all_possible_assignments(variable_set.iter().cloned(), range_constraints)
-        {
-            // First check all algebraic constraints if this is a conflict.
-            let alg_substituted = exprs
-                .iter()
-                .filter(|simp| simp.is_algebraic_constraint)
-                .map(|simp| simp.substitute(&assignment))
-                .collect_vec();
-            if exprs
-                .iter()
-                .filter(|simp| simp.is_algebraic_constraint)
-                .zip(&alg_substituted)
-                .any(|(simp, s)| simp.is_known_nonzero(s))
-            {
-                // Assignment leads to a conflict. This means that there is
-                // an algebraic constraints that rules out this assignment, so
-                // we don't have to consider it.
-                continue;
-            }
-            // No conflict. First, update the algebraic constraints where
-            // we already computed the simplified version.
-            for (simp, s) in exprs
-                .iter_mut()
-                .filter(|simp| simp.is_algebraic_constraint)
-                .zip(alg_substituted)
-            {
-                simp.update(s);
-            }
-            // Now update the bus interaction fields.
-            for simp in exprs
-                .iter_mut()
-                .filter(|simp| !simp.is_algebraic_constraint)
-            {
-                let s = simp.substitute(&assignment);
-                simp.update(s);
-            }
-            // Remove bus interaction fields with conflicting simplifications
-            // This is a performance optimization, saving us time in the loop
-            // above for the next assignment candidate.
-            exprs.retain(|simp| {
-                simp.is_algebraic_constraint || !simp.has_conflicting_simplifications()
-            });
-        }
-
-        substitutions.extend(exprs.into_iter().filter_map(|simp| {
-            let e = simp.expression;
-            simp.into_simplification()
-                .and_then(|s| (s != *e).then(|| (e.clone(), s)))
-        }));
-    }
+            .collect_vec();
+    let substitutions_per_set = variable_sets
+        .par_iter()
+        .map(|variable_set| {
+            simplifications_for_variable_set(&constraint_system, variable_set, range_constraints)
+        })
+        .collect::<Vec<_>>();
+    let substitutions: BTreeMap<GroupedExpression<T, V>, GroupedExpression<T, V>> =
+        substitutions_per_set.into_iter().flatten().collect();
 
     if substitutions.is_empty() {
         return constraint_system;

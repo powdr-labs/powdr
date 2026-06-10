@@ -55,9 +55,12 @@ pub trait RangeConstraintHandler<T: FieldElement> {
 /// - removes range constraints that are already implied by existing constraints
 /// - batches several range constraints into one bus interaction, if possible
 /// - implements bit constraints via polynomial constraints, if the degree bound allows
-pub fn optimize_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+pub fn optimize_range_constraints<
+    T: FieldElement,
+    V: Ord + Clone + Hash + Eq + Display + Send + Sync,
+>(
     mut system: ConstraintSystem<T, V>,
-    bus_interaction_handler: impl BusInteractionHandler<T> + RangeConstraintHandler<T> + Clone,
+    bus_interaction_handler: impl BusInteractionHandler<T> + RangeConstraintHandler<T> + Clone + Sync,
     degree_bound: DegreeBound,
 ) -> ConstraintSystem<T, V> {
     // Remove all pure range constraints, but collect what was removed.
