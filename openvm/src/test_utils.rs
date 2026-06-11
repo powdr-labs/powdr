@@ -50,6 +50,7 @@ pub fn compile_apc<ISA: OpenVmISA>(
         degree_bound,
         ExportOptions::from_env_vars(export_path, export_level, &superblock.start_pcs()),
         &EmpiricalConstraints::default(),
+        None,
     )
     .unwrap();
 

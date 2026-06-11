@@ -6,6 +6,7 @@ use crate::{
     evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
+    instruction_templates::InstructionTemplates,
     EmpiricalConstraints, PowdrConfig,
 };
 
@@ -86,6 +87,12 @@ fn create_apcs_for_all_blocks<A: Adapter>(
         .skip(config.skip_autoprecompiles as usize)
         .take(n_acc)
         .collect();
+    let templates = config.instruction_templates.then(|| {
+        InstructionTemplates::<A>::new(
+            vm_config.bus_interaction_handler.clone(),
+            config.degree_bound,
+        )
+    });
     crate::parallel::filter_map_largest_first(
         blocks,
         // The instruction count is a good predictor of the APC build and
@@ -109,6 +116,7 @@ fn create_apcs_for_all_blocks<A: Adapter>(
                 config.degree_bound,
                 export_options,
                 &empirical_constraints,
+                templates.as_ref(),
             )
             .unwrap();
 

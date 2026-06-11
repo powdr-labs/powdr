@@ -198,6 +198,72 @@ where
     ))
 }
 
+/// Optimizes the machine of a single instruction (an "instruction template"),
+/// independently of the block it appears in.
+///
+/// Compared to [`optimize`], this skips the stages that depend on the position
+/// of the instruction inside a block (execution-bus chaining and memory
+/// send/receive pairing need to see the whole block) and the stages that only
+/// pay off once the block is assembled (inlining, range constraint batching).
+/// All of those still run at block level on the concatenated machine.
+pub fn optimize_instruction_machine<T, B, MemoryBus>(
+    machine: SymbolicMachine<T>,
+    bus_interaction_handler: B,
+    degree_bound: DegreeBound,
+    mut column_allocator: ColumnAllocator,
+) -> Result<(SymbolicMachine<T>, ColumnAllocator), crate::constraint_optimizer::Error>
+where
+    T: FieldElement,
+    B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
+    MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+{
+    let mut stats_logger = StatsLogger::start(&machine);
+
+    let mut new_var = |name: &str| {
+        let id = column_allocator.issue_next_poly_id();
+        AlgebraicReference {
+            name: format!("{name}_{id}").into(),
+            id,
+        }
+    };
+
+    let mut export_options = ExportOptions::default();
+    let mut constraint_system: IndexedConstraintSystem<_, _> =
+        symbolic_machine_to_constraint_system(machine).into();
+    let mut solver = new_solver(
+        constraint_system.system().clone(),
+        bus_interaction_handler.clone(),
+    );
+    let mut simplification_cache = Default::default();
+    loop {
+        let stats = stats_logger::Stats::from(&constraint_system);
+        constraint_system = optimize_constraints::<_, _, MemoryBus>(
+            constraint_system,
+            &mut solver,
+            bus_interaction_handler.clone(),
+            &mut stats_logger,
+            // No memory bus id: memory optimization pairs sends and receives
+            // across the whole block, which is not visible here.
+            None,
+            degree_bound,
+            &mut new_var,
+            &mut export_options,
+            &mut simplification_cache,
+        )?
+        .into();
+        if stats == stats_logger::Stats::from(&constraint_system) {
+            break;
+        }
+    }
+
+    stats_logger.finalize(constraint_system.system());
+
+    Ok((
+        constraint_system_to_symbolic_machine(constraint_system.into()),
+        column_allocator,
+    ))
+}
+
 pub fn optimize_exec_bus<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
     exec_bus_id: u64,

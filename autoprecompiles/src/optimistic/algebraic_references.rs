@@ -23,8 +23,11 @@ impl BlockCellAlgebraicReferenceMapper {
                 })
             })
             .collect::<BTreeMap<_, _>>();
+        // Columns without a block cell (e.g. introduced by instruction
+        // template optimization) are skipped: they cannot be referenced by
+        // empirical constraints.
         let block_cell_to_algebraic_reference = columns
-            .map(|r| (*poly_id_to_block_cell.get(&r.id).unwrap(), r))
+            .filter_map(|r| poly_id_to_block_cell.get(&r.id).map(|cell| (*cell, r)))
             .collect::<BTreeMap<_, _>>();
         Self {
             block_cell_to_algebraic_reference,

@@ -10,6 +10,7 @@ use crate::{
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
+    instruction_templates::InstructionTemplates,
     EmpiricalConstraints, PowdrConfig,
 };
 
@@ -120,6 +121,13 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             blocks.len(),
         );
 
+        let templates = config.instruction_templates.then(|| {
+            InstructionTemplates::<A>::new(
+                vm_config.bus_interaction_handler.clone(),
+                config.degree_bound,
+            )
+        });
+
         // Generate apcs in parallel, largest blocks first.
         // Produces two matching vectors: one with the APCs and another with the corresponding originating block.
         let (apcs, blocks): (Vec<_>, Vec<_>) = crate::parallel::filter_map_largest_first(
@@ -134,6 +142,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                     config,
                     &vm_config,
                     &empirical_constraints,
+                    templates.as_ref(),
                 )?;
                 tracing::debug!(
                     "Generated APC for block {:?}, (took {:?})",
@@ -224,6 +233,7 @@ fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
     config: &PowdrConfig,
     vm_config: &AdapterVmConfig<A>,
     empirical_constraints: &EmpiricalConstraints,
+    templates: Option<&InstructionTemplates<A>>,
 ) -> Option<C> {
     let export_options = ExportOptions::new(
         config.apc_candidates_dir_path.clone(),
@@ -236,6 +246,7 @@ fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
         config.degree_bound,
         export_options,
         empirical_constraints,
+        templates,
     )
     .ok()?;
     let apc_with_stats = evaluate_apc::<A>(vm_config.instruction_handler, apc);

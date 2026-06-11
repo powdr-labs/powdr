@@ -43,6 +43,7 @@ pub mod evaluation;
 pub mod execution_profile;
 pub mod expression;
 pub mod expression_conversion;
+pub mod instruction_templates;
 pub mod low_degree_bus_interaction_optimizer;
 pub mod memory_optimizer;
 pub mod optimizer;
@@ -53,6 +54,7 @@ pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
+pub use instruction_templates::InstructionTemplates;
 pub use pgo::{PgoConfig, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
@@ -83,6 +85,10 @@ pub struct PowdrConfig {
     pub should_use_optimistic_precompiles: bool,
     /// Whether to detect and use static superblocks: sequences of basic blocks linked by statically determined jumps.
     pub should_use_static_superblocks: bool,
+    /// Whether to pre-optimize each distinct instruction encoding once
+    /// ("instruction templates") and assemble the unoptimized APCs from the
+    /// pre-optimized machines. Experimental.
+    pub instruction_templates: bool,
 }
 
 impl PowdrConfig {
@@ -98,6 +104,10 @@ impl PowdrConfig {
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
             should_use_static_superblocks: true,
+            // Defaults to the environment variable so that the experimental
+            // feature can be evaluated without changing call sites.
+            instruction_templates: std::env::var("POWDR_INSTRUCTION_TEMPLATES")
+                .is_ok_and(|v| v == "1"),
         }
     }
 
@@ -132,6 +142,11 @@ impl PowdrConfig {
 
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
+        self
+    }
+
+    pub fn with_instruction_templates(mut self, instruction_templates: bool) -> Self {
+        self.instruction_templates = instruction_templates;
         self
     }
 }
@@ -323,16 +338,22 @@ pub fn build_unoptimized<A: Adapter>(
     degree_bound: DegreeBound,
     export_options: &mut ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
+    templates: Option<&InstructionTemplates<A>>,
 ) -> AdapterUnoptimizedApc<A> {
     let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
+        templates,
     );
 
     // Generate constraints for optimistic precompiles.
     let should_generate_execution_constraints =
         optimistic_precompile_config().restrict_optimistic_precompiles;
+    assert!(
+        templates.is_none() || !should_generate_execution_constraints,
+        "instruction templates are not supported together with optimistic precompiles"
+    );
     let algebraic_references =
         BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
     let empirical_constraints = empirical_constraints.for_block(&block);
@@ -456,6 +477,7 @@ pub fn build<A: Adapter>(
     degree_bound: DegreeBound,
     mut export_options: ExportOptions,
     empirical_constraints: &EmpiricalConstraints,
+    templates: Option<&InstructionTemplates<A>>,
 ) -> Result<AdapterApc<A>, crate::constraint_optimizer::Error> {
     let start = std::time::Instant::now();
 
@@ -468,6 +490,7 @@ pub fn build<A: Adapter>(
         degree_bound,
         &mut export_options,
         empirical_constraints,
+        templates,
     );
     let apc = optimize_apc::<A>(unopt, bus_interaction_handler, &mut export_options)?;
 

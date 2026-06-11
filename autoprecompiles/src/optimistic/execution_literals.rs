@@ -30,6 +30,9 @@ pub fn optimistic_literals<A: Adapter>(
         block,
         vm_config.instruction_handler,
         &vm_config.bus_map,
+        // Optimistic precompiles rely on the unoptimized per-instruction
+        // machines, so instruction templates are not used here.
+        None,
     );
 
     symbolic_machines

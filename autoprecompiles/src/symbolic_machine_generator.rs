@@ -7,6 +7,7 @@ use crate::{
     adapter::Adapter,
     blocks::{Instruction, SuperBlock},
     expression::AlgebraicExpression,
+    instruction_templates::InstructionTemplates,
     powdr,
     symbolic_machine::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine},
     Apc, BusMap, BusType, ColumnAllocator, InstructionHandler,
@@ -119,9 +120,10 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
     block: &SuperBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
+    templates: Option<&InstructionTemplates<A>>,
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
     let (machines, column_allocator) =
-        statements_to_symbolic_machines::<A>(block, instruction_handler, bus_map);
+        statements_to_symbolic_machines::<A>(block, instruction_handler, bus_map, templates);
     let machine = machines
         .into_iter()
         .reduce(SymbolicMachine::concatenate)
@@ -135,12 +137,22 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
     block: &SuperBlock<A::Instruction>,
     instruction_handler: &A::InstructionHandler,
     bus_map: &BusMap<A::CustomBusTypes>,
+    templates: Option<&InstructionTemplates<A>>,
 ) -> (Vec<SymbolicMachine<A::PowdrField>>, ColumnAllocator) {
     let mut col_subs: Vec<Vec<u64>> = Vec::new();
     let mut global_idx = 0;
     let mut machines: Vec<SymbolicMachine<A::PowdrField>> = Vec::new();
 
     for (i, (pc, instr)) in block.instructions().enumerate() {
+        if let Some(templates) = templates {
+            let (machine, subs, next_global_idx) =
+                templates.instantiate(instr, pc, i, global_idx, instruction_handler, bus_map);
+            global_idx = next_global_idx;
+            col_subs.push(subs);
+            machines.push(machine);
+            continue;
+        }
+
         let machine = instruction_handler
             .get_instruction_air_and_id(instr)
             .1
@@ -204,7 +216,7 @@ pub(crate) fn statements_to_symbolic_machines<A: Adapter>(
     )
 }
 
-fn exec_receive<T: FieldElement>(
+pub(crate) fn exec_receive<T: FieldElement>(
     machine: &SymbolicMachine<T>,
     exec_bus_id: u64,
 ) -> SymbolicBusInteraction<T> {

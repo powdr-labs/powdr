@@ -32,7 +32,7 @@ use powdr_autoprecompiles::powdr::UniqueReferences;
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::VmConfig;
-use powdr_autoprecompiles::{build_unoptimized, optimize_apc};
+use powdr_autoprecompiles::{build_unoptimized, optimize_apc, InstructionTemplates};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
@@ -485,6 +485,13 @@ pub fn dump_apcs<'a, ISA: OpenVmISA>(
     let exec_blocks = detect_superblocks(config, &execution_profile.pc_list, basic_blocks);
     let empirical_constraints = empirical_constraints.apply_pc_threshold();
 
+    let templates = config.instruction_templates.then(|| {
+        InstructionTemplates::new(
+            vm_config.bus_interaction_handler.clone(),
+            config.degree_bound,
+        )
+    });
+
     std::fs::create_dir_all(out_dir)?;
 
     // Build + serialize each unoptimized APC in parallel, streaming to disk and dropping the
@@ -501,6 +508,7 @@ pub fn dump_apcs<'a, ISA: OpenVmISA>(
                     config.degree_bound,
                     &mut ExportOptions::default(),
                     &empirical_constraints,
+                    templates.as_ref(),
                 );
                 let start_pcs = unoptimized_apc.block.start_pcs();
                 let file = unopt_apc_file_name(&start_pcs);
