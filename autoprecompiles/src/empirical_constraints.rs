@@ -165,6 +165,17 @@ impl EmpiricalConstraints {
 }
 
 impl BlockEmpiricalConstraints {
+    /// Returns true if there are no constraints, i.e., neither column ranges
+    /// nor equivalence classes with more than one member.
+    pub fn is_empty(&self) -> bool {
+        self.column_ranges_by_pc.is_empty()
+            && self
+                .equivalence_classes
+                .to_classes()
+                .iter()
+                .all(|class| class.len() < 2)
+    }
+
     /// Returns a new `BlockEmpiricalConstraints` instance containing only the
     /// constraints (both range and equivalence) for which the provided
     /// predicate on `BlockCell`s returns true.

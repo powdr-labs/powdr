@@ -87,7 +87,8 @@ pub struct PowdrConfig {
     pub should_use_static_superblocks: bool,
     /// Whether to pre-optimize each distinct instruction encoding once
     /// ("instruction templates") and assemble the unoptimized APCs from the
-    /// pre-optimized machines. Experimental.
+    /// pre-optimized machines. Enabled by default; automatically disabled
+    /// for blocks with optimistic precompiles or empirical constraints.
     pub instruction_templates: bool,
 }
 
@@ -104,10 +105,7 @@ impl PowdrConfig {
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
             should_use_static_superblocks: true,
-            // Defaults to the environment variable so that the experimental
-            // feature can be evaluated without changing call sites.
-            instruction_templates: std::env::var("POWDR_INSTRUCTION_TEMPLATES")
-                .is_ok_and(|v| v == "1"),
+            instruction_templates: true,
         }
     }
 
@@ -346,6 +344,26 @@ pub fn build_unoptimized<A: Adapter>(
     empirical_constraints: &EmpiricalConstraints,
     templates: Option<&InstructionTemplates<A>>,
 ) -> AdapterUnoptimizedApc<A> {
+    // Generate constraints for optimistic precompiles.
+    let should_generate_execution_constraints =
+        optimistic_precompile_config().restrict_optimistic_precompiles;
+    let empirical_constraints = empirical_constraints.for_block(&block);
+
+    // Optimistic precompiles and empirical constraints reference columns of
+    // the raw instruction machines, which instruction template optimization
+    // may eliminate, so templates are not used in those cases.
+    let templates = if should_generate_execution_constraints || !empirical_constraints.is_empty() {
+        if templates.is_some() {
+            tracing::warn!(
+                "Not using instruction templates for block {:?}: not supported together with optimistic precompiles or empirical constraints",
+                block.start_pcs()
+            );
+        }
+        None
+    } else {
+        templates
+    };
+
     let (mut machine, column_allocator) = statements_to_symbolic_machine::<A>(
         &block,
         vm_config.instruction_handler,
@@ -353,16 +371,8 @@ pub fn build_unoptimized<A: Adapter>(
         templates,
     );
 
-    // Generate constraints for optimistic precompiles.
-    let should_generate_execution_constraints =
-        optimistic_precompile_config().restrict_optimistic_precompiles;
-    assert!(
-        templates.is_none() || !should_generate_execution_constraints,
-        "instruction templates are not supported together with optimistic precompiles"
-    );
     let algebraic_references =
         BlockCellAlgebraicReferenceMapper::new(&column_allocator.subs, machine.main_columns());
-    let empirical_constraints = empirical_constraints.for_block(&block);
 
     // TODO: Use execution constraints
     let (empirical_constraints, _execution_constraints) = if should_generate_execution_constraints {
