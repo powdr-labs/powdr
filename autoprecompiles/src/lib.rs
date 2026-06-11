@@ -328,6 +328,12 @@ pub struct UnoptimizedApc<F, I, C> {
     pub degree_bound: DegreeBound,
     /// The bus map, used by the optimizer and to reconstruct the bus-interaction handler.
     pub bus_map: BusMap<C>,
+    /// Stats of the unoptimized machine as it would be built without
+    /// instruction templates (what the `before_opt_*` metrics report). Equals
+    /// the stats of `machine` when instruction templates are disabled. `None`
+    /// only for snapshots serialized before this field existed.
+    #[serde(default)]
+    pub before_opt_stats: Option<AirStats>,
 }
 
 /// Build the unoptimized APC for `block`: generate the symbolic machine and fold in the
@@ -387,6 +393,7 @@ pub fn build_unoptimized<A: Adapter>(
     };
 
     // Add empirical constraints to the baseline
+    let num_empirical_constraints = empirical_constraints.len();
     machine
         .constraints
         .extend(empirical_constraints.into_iter().map(Into::into));
@@ -401,12 +408,28 @@ pub fn build_unoptimized<A: Adapter>(
         );
     }
 
+    // The `before_opt_*` stats always describe the raw unoptimized machine;
+    // with instruction templates, `machine` is already partially optimized,
+    // so the raw stats are reconstructed from the templates.
+    let before_opt_stats = match templates {
+        None => AirStats::new(&machine),
+        Some(templates) => {
+            let mut stats = templates.raw_block_stats(
+                &block,
+                vm_config.instruction_handler,
+                &vm_config.bus_map,
+            );
+            stats.constraints += num_empirical_constraints;
+            stats
+        }
+    };
+
     let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];
-    metrics::counter!("before_opt_cols", &labels)
-        .absolute(machine.unique_references().count() as u64);
-    metrics::counter!("before_opt_constraints", &labels).absolute(machine.constraints.len() as u64);
+    metrics::counter!("before_opt_cols", &labels).absolute(before_opt_stats.main_columns as u64);
+    metrics::counter!("before_opt_constraints", &labels)
+        .absolute(before_opt_stats.constraints as u64);
     metrics::counter!("before_opt_interactions", &labels)
-        .absolute(machine.bus_interactions.len() as u64);
+        .absolute(before_opt_stats.bus_interactions as u64);
 
     UnoptimizedApc {
         block,
@@ -414,6 +437,7 @@ pub fn build_unoptimized<A: Adapter>(
         column_allocator,
         degree_bound,
         bus_map: vm_config.bus_map,
+        before_opt_stats: Some(before_opt_stats),
     }
 }
 
@@ -431,6 +455,7 @@ pub fn optimize_apc<A: Adapter>(
         column_allocator,
         degree_bound,
         bus_map,
+        before_opt_stats: _,
     } = unopt;
 
     let labels = [("apc_start_pc", block.start_pcs().into_iter().join("_"))];

@@ -17,7 +17,8 @@ use powdr_expression::visitors::ExpressionVisitable;
 use powdr_number::FieldElement;
 
 use crate::adapter::Adapter;
-use crate::blocks::{Instruction, PcStep};
+use crate::blocks::{Instruction, PcStep, SuperBlock};
+use crate::evaluation::AirStats;
 use crate::expression::{AlgebraicExpression, AlgebraicReference};
 use crate::powdr::UniqueReferences;
 use crate::symbolic_machine::SymbolicConstraint;
@@ -43,6 +44,11 @@ struct Template<T> {
     id_space: u64,
     /// The number of columns of the raw instruction AIR.
     raw_width: u64,
+    /// Stats of the raw single-instruction machine (the instruction AIR plus
+    /// the `is_valid` and pc-lookup pinning constraints), before template
+    /// optimization. Used to report the `before_opt_*` stats as if no
+    /// templates were used.
+    raw_stats: AirStats,
 }
 
 /// A cache of pre-optimized single-instruction machines, keyed by the
@@ -84,20 +90,7 @@ impl<A: Adapter> InstructionTemplates<A> {
         instruction_handler: &A::InstructionHandler,
         bus_map: &BusMap<A::CustomBusTypes>,
     ) -> (SymbolicMachine<A::PowdrField>, Vec<u64>, u64) {
-        let row = self.pc_lookup_row(instr, pc);
-        // Detect the pc-dependent positions of the row by probing a second pc.
-        // (Assumes that a position whose value coincides at the two pcs is
-        // independent of the pc, which holds for rows of the form
-        // `[pc, encoding...]`.)
-        let step = u64::from(<A::Instruction as PcStep>::pc_step());
-        let probe_pc = pc.checked_sub(step).unwrap_or(pc + step);
-        let probe_row = self.pc_lookup_row(instr, probe_pc);
-        let key: TemplateKey<A::PowdrField> = row
-            .iter()
-            .zip_eq(&probe_row)
-            .map(|(a, b)| (a == b).then_some(*a))
-            .collect();
-
+        let (key, row) = self.key_and_row(instr, pc);
         let template = self.get_or_build(&key, instr, instruction_handler, bus_map);
 
         let mut machine = relabel_machine(template.machine.clone(), next_poly_id, index);
@@ -121,6 +114,47 @@ impl<A: Adapter> InstructionTemplates<A> {
 
         let subs = (next_poly_id..next_poly_id + template.raw_width).collect();
         (machine, subs, next_poly_id + template.id_space)
+    }
+
+    /// Returns the template key for the instruction at `pc` along with its pc
+    /// lookup row. The pc-dependent positions of the row are masked out of the
+    /// key, detected by probing a second pc. (This assumes that a position
+    /// whose value coincides at the two pcs is independent of the pc, which
+    /// holds for rows of the form `[pc, encoding...]`.)
+    fn key_and_row(
+        &self,
+        instr: &A::Instruction,
+        pc: u64,
+    ) -> (TemplateKey<A::PowdrField>, Vec<A::PowdrField>) {
+        let row = self.pc_lookup_row(instr, pc);
+        let step = u64::from(<A::Instruction as PcStep>::pc_step());
+        let probe_pc = pc.checked_sub(step).unwrap_or(pc + step);
+        let probe_row = self.pc_lookup_row(instr, probe_pc);
+        let key = row
+            .iter()
+            .zip_eq(&probe_row)
+            .map(|(a, b)| (a == b).then_some(*a))
+            .collect();
+        (key, row)
+    }
+
+    /// Returns the stats the unoptimized machine for `block` would have if it
+    /// was built without instruction templates (excluding any empirical
+    /// constraints, which are added by the caller).
+    pub(crate) fn raw_block_stats(
+        &self,
+        block: &SuperBlock<A::Instruction>,
+        instruction_handler: &A::InstructionHandler,
+        bus_map: &BusMap<A::CustomBusTypes>,
+    ) -> AirStats {
+        block
+            .instructions()
+            .map(|(pc, instr)| {
+                let (key, _) = self.key_and_row(instr, pc);
+                self.get_or_build(&key, instr, instruction_handler, bus_map)
+                    .raw_stats
+            })
+            .sum()
     }
 
     fn pc_lookup_row(&self, instr: &A::Instruction, pc: u64) -> Vec<A::PowdrField> {
@@ -176,6 +210,15 @@ impl<A: Adapter> InstructionTemplates<A> {
             raw_width - 1,
             "The reference ids must be contiguous"
         );
+
+        // The raw machine additionally gets the `is_valid` constraint and one
+        // pinning constraint per pc lookup argument (`key.len()` in total,
+        // split between the template and its instances).
+        let raw_stats = AirStats {
+            main_columns: raw_width as usize,
+            constraints: machine.constraints.len() + 1 + key.len(),
+            bus_interactions: machine.bus_interactions.len(),
+        };
 
         // Constrain `is_valid` to be 1, like `statements_to_symbolic_machines`
         // does for the non-template path.
@@ -245,6 +288,7 @@ impl<A: Adapter> InstructionTemplates<A> {
             machine,
             id_space,
             raw_width,
+            raw_stats,
         }
     }
 }

@@ -514,14 +514,17 @@ pub fn dump_apcs<'a, ISA: OpenVmISA>(
                 let file = unopt_apc_file_name(&start_pcs);
                 let writer = BufWriter::new(std::fs::File::create(out_dir.join(&file))?);
                 serde_cbor::to_writer(writer, &unoptimized_apc).map_err(to_io)?;
+                let before_opt_stats = unoptimized_apc
+                    .before_opt_stats
+                    .expect("set by build_unoptimized");
                 Ok(ApcInfoRow {
                     start_pcs,
                     file,
                     instr_count,
                     exec_count: count,
-                    before_opt_cols: unoptimized_apc.machine.unique_references().count(),
-                    before_opt_constraints: unoptimized_apc.machine.constraints.len(),
-                    before_opt_interactions: unoptimized_apc.machine.bus_interactions.len(),
+                    before_opt_cols: before_opt_stats.main_columns,
+                    before_opt_constraints: before_opt_stats.constraints,
+                    before_opt_interactions: before_opt_stats.bus_interactions,
                 })
             },
         )
