@@ -1,0 +1,17 @@
+[package]
+name = "image-blur-guest"
+version = "0.0.0"
+edition = "2021"
+
+# Detach from the powdr workspace: this crate is built for the zkVM target by
+# the OpenVM SDK, not by `cargo build --all`.
+[workspace]
+members = []
+
+[dependencies]
+openvm = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr.1" }
+openvm-platform = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr.1" }
+# Keccak as a built-in precompile (cheap in the trace) so that the only thing
+# autoprecompiles accelerate is the blur loop.
+openvm-keccak256 = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr.1" }
+image-blur-core = { path = "../core" }

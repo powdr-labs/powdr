@@ -1,0 +1,10 @@
+# Build artifacts
+target/
+
+# Generated outputs (blurred image, metrics + APC candidate reports)
+blur.png
+metrics.json
+apc_candidates.json
+
+# powdr APC artifact cache (includes candidates/apc_candidates.json)
+apc-cache/
