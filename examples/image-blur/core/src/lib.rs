@@ -39,26 +39,27 @@ const _: () = assert!(KERNEL == 5, "the blur kernel is unrolled to 5x5; update t
 /// are copied unchanged. Returns a new buffer of the same length.
 pub fn blur(width: usize, height: usize, input: &[u8]) -> Vec<u8> {
     let mut out = input.to_vec();
-    // Nothing to do if the image is too small to have an interior.
-    if width <= 2 * RADIUS || height <= 2 * RADIUS {
-        return out;
-    }
     for y in RADIUS..height - RADIUS {
         for x in RADIUS..width - RADIUS {
             // Top-left corner of the kernel window centered on (y, x).
             let base = (y - RADIUS) * width + (x - RADIUS);
-            // Sum the 25-pixel window — unrolled into one branch-free block.
+            // Sum the 25-pixel window. The accesses use `get_unchecked` so the
+            // fully-unrolled body has *no* bounds-check branches and stays a
+            // single straight-line basic block — the block powdr turns into an
+            // autoprecompile.
             let mut sum: u32 = 0;
             unroll! {
                 for dy in 0..5 {
                     unroll! {
                         for dx in 0..5 {
-                            sum += input[base + dy * width + dx] as u32;
+                            sum += unsafe { *input.get_unchecked(base + dy * width + dx) } as u32;
                         }
                     }
                 }
             }
-            out[y * width + x] = (sum / AREA) as u8;
+            unsafe {
+                *out.get_unchecked_mut(y * width + x) = (sum / AREA) as u8;
+            }
         }
     }
     out
