@@ -41,12 +41,7 @@ pub fn blur(width: usize, height: usize, input: &[u8]) -> Vec<u8> {
     let mut out = input.to_vec();
     for y in RADIUS..height - RADIUS {
         for x in RADIUS..width - RADIUS {
-            // Top-left corner of the kernel window centered on (y, x).
             let base = (y - RADIUS) * width + (x - RADIUS);
-            // Sum the 25-pixel window. The accesses use `get_unchecked` so the
-            // fully-unrolled body has *no* bounds-check branches and stays a
-            // single straight-line basic block — the block powdr turns into an
-            // autoprecompile.
             let mut sum: u32 = 0;
             unroll! {
                 for dy in 0..5 {

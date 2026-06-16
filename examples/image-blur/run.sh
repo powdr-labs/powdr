@@ -1,8 +1,8 @@
 #! /bin/bash
 set -e
 
-# Image to blur (optional; defaults to the bundled 128x128 sample).
-IMG="${1:-assets/example_256.png}"
+# Image to blur
+IMG="${1:-assets/ethereum.png}"
 
 # Baseline: No APCs
 cargo run --release --manifest-path host/Cargo.toml -- --image "$IMG"
