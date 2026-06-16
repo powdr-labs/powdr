@@ -2,9 +2,9 @@
 //!
 //! Decodes an image to grayscale (the private input), compiles the zkVM guest
 //! and optionally synthesizes autoprecompiles for its hot blur loop, then proves
-//! and verifies the run. The guest commits to keccak(input) and
-//! keccak(blurred-output) as public values; the host recomputes the blur with
-//! the same `image_blur_core::blur` and checks those hashes match.
+//! and verifies the run. The guest reveals a single 32-byte commitment to
+//! keccak(input) and keccak(blurred-output); the host recomputes the blur with
+//! the same `image_blur_core::blur` and checks the commitment matches.
 //!
 //! Drives powdr as a library; the proving path mirrors `powdr_openvm_riscv::prove`.
 
@@ -34,8 +34,6 @@ use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
 
-/// Two keccak-256 digests are revealed as public values.
-const PUBLIC_VALUE_BYTES: usize = 64;
 /// Where the blurred image is written.
 const OUT_PATH: &str = "blur.png";
 /// powdr's staged APC artifact cache (reused across runs).
@@ -79,33 +77,23 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
         pixels.len()
     );
 
-    // Native reference computation (the guest proves the same thing).
+    // Native reference computation (the guest proves the same thing): blur the
+    // image, hash input and output, and commit to both with a single digest.
     let blurred = image_blur_core::blur(width as usize, height as usize, &pixels);
     let h_in = keccak256(&pixels);
     let h_out = keccak256(&blurred);
+    let commitment = commit(&h_in, &h_out);
 
-    // Compile the guest.
+    // Compile the guest. The guest reveals a single 32-byte commitment, which
+    // fits the default public-values width — no config override needed.
     let guest_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .ok_or("host crate has no parent dir")?
         .join("guest");
-    let mut original = compile_openvm(
+    let original = compile_openvm(
         guest_dir.to_str().ok_or("non-utf8 guest path")?,
         GuestOptions::default(),
     )?;
-
-    // Two keccak digests = 64 public-value bytes. Must be set BEFORE the staged
-    // pipeline: it is serialized into the APC cache and cloned into powdr's
-    // internal config, so setting it afterwards would leave a stale copy at 32.
-    let system_config = original
-        .vm_config
-        .config()
-        .sdk
-        .system
-        .config
-        .clone()
-        .with_public_values(PUBLIC_VALUE_BYTES);
-    original.vm_config.config_mut().sdk.system.config = system_config;
 
     // Synthesize autoprecompiles (cached under ARTIFACTS_DIR).
     let pgo_type = if args.apc > 0 {
@@ -174,10 +162,10 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
     let public_values = sdk
         .execute(program.exe.clone(), stdin.clone())
         .map_err(|e| format!("execute failed: {e:?}"))?;
-    check_public_values(&public_values, &h_in, &h_out)?;
+    check_public_values(&public_values, &commitment)?;
     write_image(Path::new(OUT_PATH), width, height, &blurred)?;
     tracing::info!(
-        "Execution OK — public hashes match. Wrote {OUT_PATH} (in={}, out={})",
+        "Execution OK — public commitment matches. Wrote {OUT_PATH} (in={}, out={})",
         hex::encode(h_in),
         hex::encode(h_out),
     );
@@ -213,8 +201,8 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
         },
     )?;
 
-    // Confirm the proof's public values are the hashes we expect.
-    check_public_values(&proof_pv, &h_in, &h_out)?;
+    // Confirm the proof commits to the value we expect.
+    check_public_values(&proof_pv, &commitment)?;
     println!(
         "Proof verified. Proving + verification took {:.2?}. Metrics written to {METRICS_PATH}.",
         start.elapsed()
@@ -231,19 +219,23 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
     out
 }
 
-fn check_public_values(pv: &[u8], h_in: &[u8; 32], h_out: &[u8; 32]) -> Result<(), Box<dyn Error>> {
-    if pv.len() < PUBLIC_VALUE_BYTES {
+/// Single public commitment to both digests: keccak(h_in ‖ h_out). Must match
+/// the guest's `reveal_bytes32`.
+fn commit(h_in: &[u8; 32], h_out: &[u8; 32]) -> [u8; 32] {
+    let mut pair = [0u8; 64];
+    pair[..32].copy_from_slice(h_in);
+    pair[32..].copy_from_slice(h_out);
+    keccak256(&pair)
+}
+
+fn check_public_values(pv: &[u8], commitment: &[u8; 32]) -> Result<(), Box<dyn Error>> {
+    if pv.len() < 32 || &pv[0..32] != commitment {
         return Err(format!(
-            "expected >= {PUBLIC_VALUE_BYTES} public bytes, got {}",
-            pv.len()
+            "public commitment mismatch: proof {} vs host {}",
+            hex::encode(pv.get(0..32).unwrap_or(pv)),
+            hex::encode(commitment)
         )
         .into());
-    }
-    if &pv[0..32] != h_in {
-        return Err("input hash mismatch between proof and host".into());
-    }
-    if &pv[32..64] != h_out {
-        return Err("output hash mismatch between proof and host".into());
     }
     Ok(())
 }

@@ -2,12 +2,13 @@
 
 A small end-to-end powdr example that proves a 5×5 box blur of a **private**
 image. The guest hashes the input image (keccak-256), blurs it, hashes the
-result, and reveals both digests as public values — so the proof attests *"I know
-an image with hash `h_in` whose blur has hash `h_out`"*. The blur's inner loop is
-a single hot basic block that dominates the trace, making it an ideal target for
-powdr's **autoprecompiles (APCs)**. The host (this binary) decodes the image,
-drives powdr as a library to compile/prove/verify, recomputes the blur natively
-with the *same* `core::blur` to check the public hashes, and writes `blur.png`.
+result, and reveals a single 32-byte commitment to the two digests
+(`keccak(h_in ‖ h_out)`) — so the proof attests *"I know an image whose
+input/blur hashes commit to this value"*. The blur's inner loop is a single hot
+basic block that dominates the trace, making it an ideal target for powdr's
+**autoprecompiles (APCs)**. The host (this binary) decodes the image, drives
+powdr as a library to compile/prove/verify, recomputes the blur natively with
+the *same* `core::blur` to check the commitment, and writes `blur.png`.
 
 ## Usage
 
@@ -22,7 +23,7 @@ cargo run --release --manifest-path host/Cargo.toml -- --image assets/example_12
 
 Flags: `--apc N` (number of autoprecompiles; `0`, the default, disables them),
 `--execute-only` (skip the STARK proof). Sample images live in `assets/`
-(`example.png` 64×64, `example_128.png`, `example_256.png`). The blur kernel is a
+(`example_064.png`, `example_128.png`, `example_256.png`). The blur kernel is a
 compile-time 5×5 (`RADIUS` in `core/src/lib.rs`; the window sum is unrolled, so
 changing it means updating the `unroll!` ranges too).
 
