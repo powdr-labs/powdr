@@ -6,7 +6,7 @@ use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
     execution_profile::ExecutionProfile,
     pgo::create_apcs,
-    ApcCandidates, EmpiricalConstraints, GenerateConfig,
+    EmpiricalConstraints, GenerateConfig,
 };
 
 pub struct InstructionPgo<A> {
@@ -39,7 +39,7 @@ impl<A: Adapter> PgoAdapter for InstructionPgo<A> {
             exec_blocks.blocks.len()
         );
 
-        if matches!(generate_configs.apc_candidates, ApcCandidates::Exact(0)) {
+        if matches!(generate_configs.apc_candidates, Some(0)) {
             return vec![];
         }
 

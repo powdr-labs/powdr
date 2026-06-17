@@ -6,7 +6,7 @@ use openvm_stark_sdk::bench::serialize_metric_snapshot;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::PgoType;
-use powdr_autoprecompiles::{ApcCandidates, GenerateConfig, PgoConfig, SelectConfig};
+use powdr_autoprecompiles::{GenerateConfig, PgoConfig, SelectConfig};
 use powdr_openvm::StagedPipeline;
 use powdr_openvm_riscv::{
     compile_openvm, detect_empirical_constraints, GuestOptions, OriginalCompiledProgram, RiscvISA,
@@ -322,10 +322,7 @@ fn validate_generate_args(args: &GenerateApcsArgs, for_execution: bool) {
 impl From<&GenerateApcsArgs> for GenerateConfig {
     fn from(args: &GenerateApcsArgs) -> Self {
         let mut generate = GenerateConfig::new(DEFAULT_DEGREE_BOUND)
-            .with_apc_candidates(match args.apc_candidates {
-                Some(n) => ApcCandidates::Exact(n),
-                None => ApcCandidates::All,
-            })
+            .with_apc_candidates(args.apc_candidates)
             .with_optimistic_precompiles(args.optimistic_precompiles)
             .with_superblocks(
                 args.superblocks,

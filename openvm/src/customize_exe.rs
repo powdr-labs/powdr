@@ -199,7 +199,7 @@ impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
 /// Build and rank candidate autoprecompiles for `original_program` under `pgo_data`.
 ///
 /// The returned `Vec` is ordered by the PGO strategy's ranking (best candidate first),
-/// and capped by `generate.apc_candidates` (`ApcCandidates::All` = no cap).
+/// and capped by `generate.apc_candidates` (`None` = no cap).
 pub fn generate_apcs<'a, ISA: OpenVmISA>(
     original_program: &OriginalCompiledProgram<'a, ISA>,
     generate: &GenerateConfig,

@@ -61,22 +61,14 @@ pub mod optimistic;
 pub mod staged_cache;
 pub mod trace_handler;
 
-/// How many APC candidates the generate stage builds and ranks.
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum ApcCandidates {
-    /// Build every eligible candidate.
-    All,
-    /// Build at most this many candidates; `Exact(0)` builds none.
-    Exact(u64),
-}
-
 /// Inputs to the build-and-rank stage of the autoprecompile pipeline.
 #[derive(Clone, Debug, Hash)]
 pub struct GenerateConfig {
-    /// How many candidate APCs to build/rank.
-    /// Depending on the PGO strategy, an `ApcCandidates::Exact` cap may be
-    /// ignored (meaning that more APCs are computed).
-    pub apc_candidates: ApcCandidates,
+    /// Cap on the number of candidate APCs built/ranked.
+    /// `None` means "build all eligible candidates".
+    /// Depending on the PGO strategy, the cap may be ignored
+    /// (meaning that more APCs are computed).
+    pub apc_candidates: Option<u64>,
     /// Maximum number of basic blocks included in a superblock.
     /// Default of 1 means only basic blocks are considered.
     pub superblock_max_bb_count: u8,
@@ -95,7 +87,7 @@ pub struct GenerateConfig {
 impl GenerateConfig {
     pub fn new(degree_bound: DegreeBound) -> Self {
         Self {
-            apc_candidates: ApcCandidates::All,
+            apc_candidates: None,
             superblock_max_bb_count: 1,
             apc_max_instructions: u32::MAX,
             apc_exec_count_cutoff: 1,
@@ -105,7 +97,7 @@ impl GenerateConfig {
         }
     }
 
-    pub fn with_apc_candidates(mut self, apc_candidates: ApcCandidates) -> Self {
+    pub fn with_apc_candidates(mut self, apc_candidates: Option<u64>) -> Self {
         self.apc_candidates = apc_candidates;
         self
     }

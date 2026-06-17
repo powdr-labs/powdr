@@ -15,7 +15,7 @@ use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::{pgo_data, PgoType};
 use powdr_autoprecompiles::staged_cache::{cached, stage_hash};
 use powdr_autoprecompiles::PgoData;
-use powdr_autoprecompiles::{ApcCandidates, GenerateConfig, PgoConfig, SelectConfig};
+use powdr_autoprecompiles::{GenerateConfig, PgoConfig, SelectConfig};
 
 use crate::customize_exe::{generate_apcs, select_apcs, setup, BabyBearOpenVmApcAdapter};
 use crate::isa::OpenVmISA;
@@ -132,7 +132,7 @@ impl<ISA: OpenVmISA> StagedPipeline<ISA> {
             return Vec::new();
         }
         // A build cap below the selection size can never satisfy the request.
-        if let ApcCandidates::Exact(cap) = generate.apc_candidates {
+        if let Some(cap) = generate.apc_candidates {
             assert!(
                 select.skip + select.autoprecompiles <= cap,
                 "selecting {} APCs after skipping {} needs at least {} built, \
