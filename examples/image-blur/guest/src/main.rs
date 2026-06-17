@@ -12,10 +12,9 @@ use openvm_keccak256::keccak256;
 openvm::entry!(main);
 
 pub fn main() {
-    // Inputs, in the order the host writes them to stdin.
+    // Receive the image as private input
     let width: u32 = read();
     let height: u32 = read();
-    // The image itself is the private input.
     let pixels: Vec<u8> = read();
     assert_eq!(pixels.len(), (width * height) as usize);
 
