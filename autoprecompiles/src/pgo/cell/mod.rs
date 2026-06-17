@@ -11,7 +11,7 @@ use crate::{
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
-    EmpiricalConstraints, GenerateConfig,
+    ApcCandidates, EmpiricalConstraints, GenerateConfig,
 };
 
 mod selection;
@@ -107,18 +107,17 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        // Short-circuit when the caller signals "no candidates wanted".
-        // `apc_candidates = Some(0)` is the agreed signal for this; positive
+        // An explicit `ApcCandidates::Exact(0)` means "build nothing"; positive
         // caps are ignored (Cell's density ranking needs every candidate's
         // post-opt cost and a pre-build cap would degrade ranking quality).
         match generate.apc_candidates {
-            Some(0) => return vec![],
-            Some(_) => {
+            ApcCandidates::Exact(0) => return vec![],
+            ApcCandidates::Exact(_) => {
                 tracing::warn!(
                     "GenerateConfig::apc_candidates is ignored for Cell PGO; building every eligible candidate"
                 );
             }
-            None => {}
+            ApcCandidates::All => {}
         }
 
         let AdapterExecutionBlocks::<Self::Adapter> {

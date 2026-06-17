@@ -7,7 +7,7 @@ use crate::{
     evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
-    EmpiricalConstraints, GenerateConfig,
+    ApcCandidates, EmpiricalConstraints, GenerateConfig,
 };
 
 mod cell;
@@ -103,7 +103,7 @@ pub fn pgo_data(
 }
 
 // Used by Instruction and None PGO. Builds APCs for the (pre-sorted) blocks,
-// capped by `generate_config.apc_candidates` (defaults to "all").
+// capped by `generate_config.apc_candidates` (`ApcCandidates::All` = no cap).
 //
 // The Cell PGO has its own build loop because it needs to retain
 // `BlockAndStats` for the density-based ranking; this helper drops it.
@@ -113,10 +113,10 @@ fn create_apcs<A: Adapter>(
     vm_config: AdapterVmConfig<A>,
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<A>> {
-    let cap = generate_config
-        .apc_candidates
-        .map(|n| n as usize)
-        .unwrap_or(usize::MAX);
+    let cap = match generate_config.apc_candidates {
+        ApcCandidates::All => usize::MAX,
+        ApcCandidates::Exact(n) => n as usize,
+    };
     tracing::info!("Generating up to {cap} autoprecompiles in parallel");
 
     blocks

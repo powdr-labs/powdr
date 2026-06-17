@@ -34,11 +34,8 @@ hence the ranking length).
 - `--pgo cell` **always builds every eligible candidate**. A user-set
   `--apc-candidates` is logged with a warning and otherwise ignored — Cell's
   dynamic density ranking needs the full post-opt cost of every candidate.
-- `--pgo instruction|none`:
-  - Standalone `generate-apcs <guest>`: unset = build all.
-  - Fused pipeline (`select-apcs` and beyond): unset defaults to
-    `--autoprecompiles + --skip`. Setting it explicitly lets you over-build
-    for later selection sweeps.
+- `--pgo instruction|none`: unset = build all eligible candidates; set
+  `--apc-candidates N` to cap the build (and shorten the ranking).
 
 Each command accepts the arguments of its own stage plus all preceding stages.
 For example, `prove` takes everything `setup` takes plus `--mock`,
@@ -63,8 +60,7 @@ argument struct plus a hash of the transpiled guest `VmExe`, so:
   invalidate every cache that depends on it.
 
 Cache stages: `generate → select → setup`. Sweeping `--autoprecompiles`
-under `--pgo cell` re-runs only the (cheap) `select` stage; the `generate`
-artifact is reused.
+re-runs only the (cheap) `select` stage; the `generate` artifact is reused.
 
 The hash is intentionally unstable across Rust/dep upgrades — expect the cache
 to refill after a toolchain bump.

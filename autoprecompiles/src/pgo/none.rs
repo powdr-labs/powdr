@@ -6,7 +6,7 @@ use itertools::Itertools;
 use crate::{
     adapter::{Adapter, AdapterApcWithStats, AdapterExecutionBlocks, AdapterVmConfig, PgoAdapter},
     pgo::create_apcs,
-    EmpiricalConstraints, GenerateConfig,
+    ApcCandidates, EmpiricalConstraints, GenerateConfig,
 };
 
 #[derive(Derivative)]
@@ -26,7 +26,7 @@ impl<A: Adapter> PgoAdapter for NonePgo<A> {
         _labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        if matches!(generate_config.apc_candidates, Some(0)) {
+        if matches!(generate_config.apc_candidates, ApcCandidates::Exact(0)) {
             return vec![];
         }
 

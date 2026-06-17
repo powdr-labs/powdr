@@ -373,7 +373,6 @@ mod tests {
             PgoData::Cell(p, _) | PgoData::Instruction(p) => Some(p),
             PgoData::None => None,
         };
-        let generate = generate.with_select_defaults(pgo_type, select);
         // No caching; `inputs` is irrelevant.
         let pgo_config = PgoConfig::new(pgo_type, max_columns, Vec::new());
         let pipeline = StagedPipeline::new(original_program, None);

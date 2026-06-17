@@ -59,9 +59,9 @@ pub trait PgoAdapter {
     /// PGO strategy's ranking (best candidate first); callers trim with
     /// [`select_apcs`].
     ///
-    /// `generate.apc_candidates` caps how many candidates get built. `None`
-    /// means "all eligible blocks". The PGO strategy might ignore the cap
-    /// (and produce more APCs).
+    /// `generate.apc_candidates` caps how many candidates get built.
+    /// `ApcCandidates::All` means "all eligible blocks". The PGO strategy
+    /// might ignore the cap (and produce more APCs).
     fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
@@ -106,7 +106,9 @@ pub fn detect_blocks<P: PgoAdapter + ?Sized>(
 ///
 /// Generation produces a ranking; selection is a pure slice — `skip` past
 /// the top, then take `autoprecompiles`. Kept as a function (not a trait
-/// method) because the operation is PGO-agnostic.
+/// method) because the operation is PGO-agnostic. Returns fewer than
+/// requested if the ranking is shorter (e.g. the guest had fewer eligible
+/// blocks, or a PGO budget dropped candidates).
 pub fn select_apcs<A: Adapter>(
     ranked: Vec<AdapterApcWithStats<A>>,
     select: SelectConfig,

@@ -61,14 +61,22 @@ pub mod optimistic;
 pub mod staged_cache;
 pub mod trace_handler;
 
+/// How many APC candidates the generate stage builds and ranks.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum ApcCandidates {
+    /// Build every eligible candidate.
+    All,
+    /// Build at most this many candidates; `Exact(0)` builds none.
+    Exact(u64),
+}
+
 /// Inputs to the build-and-rank stage of the autoprecompile pipeline.
 #[derive(Clone, Debug, Hash)]
 pub struct GenerateConfig {
-    /// Cap on the number of candidate APCs built/ranked.
-    /// `None` means "build all eligible candidates".
-    /// Depending on the PGO strategy, the cap may be ignored
-    /// (meaning that more APCs are computed).
-    pub apc_candidates: Option<u64>,
+    /// How many candidate APCs to build/rank.
+    /// Depending on the PGO strategy, an `ApcCandidates::Exact` cap may be
+    /// ignored (meaning that more APCs are computed).
+    pub apc_candidates: ApcCandidates,
     /// Maximum number of basic blocks included in a superblock.
     /// Default of 1 means only basic blocks are considered.
     pub superblock_max_bb_count: u8,
@@ -87,7 +95,7 @@ pub struct GenerateConfig {
 impl GenerateConfig {
     pub fn new(degree_bound: DegreeBound) -> Self {
         Self {
-            apc_candidates: None,
+            apc_candidates: ApcCandidates::All,
             superblock_max_bb_count: 1,
             apc_max_instructions: u32::MAX,
             apc_exec_count_cutoff: 1,
@@ -97,7 +105,7 @@ impl GenerateConfig {
         }
     }
 
-    pub fn with_apc_candidates(mut self, apc_candidates: Option<u64>) -> Self {
+    pub fn with_apc_candidates(mut self, apc_candidates: ApcCandidates) -> Self {
         self.apc_candidates = apc_candidates;
         self
     }
@@ -134,22 +142,6 @@ impl GenerateConfig {
 
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
-        self
-    }
-
-    /// Single source of truth for the `apc_candidates` default policy.
-    /// Callers should invoke this when both `generate` and `select`
-    /// configs are known.
-    pub fn with_select_defaults(mut self, pgo: pgo::PgoType, select: SelectConfig) -> Self {
-        if self.apc_candidates.is_some() {
-            return self;
-        }
-        self.apc_candidates = match pgo {
-            pgo::PgoType::Cell => (select.autoprecompiles == 0).then_some(0),
-            pgo::PgoType::Instruction | pgo::PgoType::None => {
-                Some(select.autoprecompiles + select.skip)
-            }
-        };
         self
     }
 }

@@ -15,7 +15,7 @@ use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::pgo::{pgo_data, PgoType};
 use powdr_autoprecompiles::staged_cache::{cached, stage_hash};
 use powdr_autoprecompiles::PgoData;
-use powdr_autoprecompiles::{GenerateConfig, PgoConfig, SelectConfig};
+use powdr_autoprecompiles::{ApcCandidates, GenerateConfig, PgoConfig, SelectConfig};
 
 use crate::customize_exe::{generate_apcs, select_apcs, setup, BabyBearOpenVmApcAdapter};
 use crate::isa::OpenVmISA;
@@ -115,7 +115,8 @@ impl<ISA: OpenVmISA> StagedPipeline<ISA> {
     /// Trim a generate-stage ranking to `select.autoprecompiles`, after
     /// `select.skip` (cached). On a select-stage cache hit, the upstream
     /// generate call is skipped entirely — the recursive
-    /// [`Self::generate_apcs`] lives inside the cached closure.
+    /// [`Self::generate_apcs`] lives inside the cached closure. Selecting
+    /// zero APCs short-circuits to an empty result without generating.
     pub fn select_apcs(
         &self,
         generate: &GenerateConfig,
@@ -124,6 +125,23 @@ impl<ISA: OpenVmISA> StagedPipeline<ISA> {
         make_pgo_profile: impl MakePgoProfile<ISA>,
         make_empirical_constraints: impl MakeEmpiricalConstraints<ISA>,
     ) -> RankedApcs<ISA> {
+        // Selecting zero APCs needs no ranking — skip generation entirely so
+        // the select stage doesn't depend on a (possibly expensive) generate
+        // artifact.
+        if select.autoprecompiles == 0 {
+            return Vec::new();
+        }
+        // A build cap below the selection size can never satisfy the request.
+        if let ApcCandidates::Exact(cap) = generate.apc_candidates {
+            assert!(
+                select.skip + select.autoprecompiles <= cap,
+                "selecting {} APCs after skipping {} needs at least {} built, \
+                 but --apc-candidates caps the build at {cap}",
+                select.autoprecompiles,
+                select.skip,
+                select.skip + select.autoprecompiles,
+            );
+        }
         let hash = self.select_hash(generate, pgo_config, select);
         cached(self.artifacts_dir.as_deref(), "select", &hash, move || {
             let ranked = self.generate_apcs(
