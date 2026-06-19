@@ -49,14 +49,6 @@ run_bench() {
     # shared candidates_dir, written on the first cache-miss run for this
     # (guest, profile-input) pair.
     if [ "${apcs:-0}" -ne 0 ]; then
-        # Copy the candidates into this run's published result dir. The
-        # bench-results README generator (generate_bench_results_readme.py)
-        # only emits the "APC Analyzer" link for an experiment when it finds
-        # an apc_candidates.json via its `**/apc_candidates.json` glob under
-        # that experiment's dir. candidates_dir lives under .bench-cache/
-        # (outside results/) so it can be shared across the apc-sweep without
-        # busting the generate-stage cache, so it isn't published on its own —
-        # hence this copy back into ${run_name}.
         cp "${candidates_dir}"/apc_candidates.json "${run_name}"/apc_candidates.json
         python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${candidates_dir}"/apc_candidates.json --output "${run_name}"/effectiveness.png
     fi
