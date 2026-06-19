@@ -116,8 +116,8 @@ fn create_apcs<A: Adapter>(
     let cap = generate_config
         .apc_candidates
         .map(|n| n as usize)
-        .unwrap_or(usize::MAX);
-    tracing::info!("Generating up to {cap} autoprecompiles in parallel");
+        .unwrap_or(blocks.len());
+    tracing::info!("Generating {cap} autoprecompiles in parallel");
 
     blocks
         .into_par_iter()
