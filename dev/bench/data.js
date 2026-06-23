@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782171910476,
+  "lastUpdate": 1782257973584,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -415845,6 +415845,34 @@ window.BENCHMARK_DATA = {
             "name": "optimize-keccak/optimize",
             "value": 21469074059,
             "range": "± 1200294151",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "3c7543d4d3c622071a8a9e2864ebef570228007a",
+          "message": "Disable link check (#3769)\n\nOur CI keeps failing, I think because\nhttps://eprint.iacr.org/2023/778.pdf doesn't work with bots.",
+          "timestamp": "2026-06-23T15:16:54Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/3c7543d4d3c622071a8a9e2864ebef570228007a"
+        },
+        "date": 1782257964506,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 23546586719,
+            "range": "± 956478250",
             "unit": "ns/iter"
           }
         ]
