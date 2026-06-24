@@ -18,6 +18,8 @@ use crate::{
     runtime_constant::VarTransformable,
 };
 
+// introduce a type def for
+
 /// The Environment in the main method to access information about
 /// the constraint system. It allows rules to translate
 /// the opaque Expr identifiers into GroupedExpressions and perform
@@ -33,6 +35,7 @@ pub struct Environment<T: FieldElement> {
     new_var_generator: RefCell<NewVarGenerator<T>>,
     /// Hints to compute variables whose constraints that define them are removed
     /// during optimization.
+    #[allow(clippy::type_complexity)]
     hints: RefCell<HashMap<Var, ComputationMethod<T, GroupedExpression<T, Var>>>>,
 }
 
@@ -83,6 +86,7 @@ impl<T: FieldElement> Environment<T> {
     }
 
     /// Re-extract re-usable components after the rules have run.
+    #[allow(clippy::type_complexity)]
     pub fn terminate(
         self,
     ) -> (

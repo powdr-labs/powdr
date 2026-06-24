@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
-use std::ops::Index;
 
 use itertools::Itertools;
 use powdr_number::FieldElement;
@@ -267,7 +266,7 @@ fn insert_new_hints<T: FieldElement, V: Hash + Eq + Ord + Clone + Display>(
         .into_iter()
         .filter_map(|(var, method)| {
             let var = &var_mapper[var];
-            if existing_hints.contains(&var) {
+            if existing_hints.contains(var) {
                 None
             } else {
                 Some((var.clone(), method))
