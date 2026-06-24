@@ -110,10 +110,14 @@ fn compile_derived_to_gpu(
     let mut bytecode = Vec::new();
 
     for DerivedVariable {
+        is_new,
         variable,
         computation_method,
     } in derived_columns
     {
+        if !is_new {
+            continue;
+        }
         let apc_col_index = apc_poly_id_to_index[&variable.id];
         let off = bytecode.len() as u32;
         match computation_method {
