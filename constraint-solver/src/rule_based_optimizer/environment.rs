@@ -18,8 +18,6 @@ use crate::{
     runtime_constant::VarTransformable,
 };
 
-// introduce a type def for
-
 /// The Environment in the main method to access information about
 /// the constraint system. It allows rules to translate
 /// the opaque Expr identifiers into GroupedExpressions and perform
