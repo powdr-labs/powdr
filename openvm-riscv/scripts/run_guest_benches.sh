@@ -22,23 +22,42 @@ run_bench() {
     echo "==== ${run_name} ===="
     echo ""
 
+    # `--artifacts-dir` and `--apc-candidates-dir` are shared across all
+    # `run_bench` calls with the same (guest, profile-input). For cell PGO
+    # the generate stage doesn't depend on `--autoprecompiles`, so sweeping
+    # `apcs` (apc010, apc030, apc100, …) hits the generate-stage cache from
+    # the second call onward — only the cheap select+setup stages re-run.
+    # `--apc-candidates-dir` has to be shared too because it lives in the
+    # generate-stage hash; if each run wrote to a different dir the cache
+    # would invalidate.
+    cache_root=".bench-cache/${guest}-input${input}"
+    artifacts_dir="${cache_root}/artifacts"
+    candidates_dir="${cache_root}/candidates"
+    mkdir -p "${candidates_dir}"
+
     mkdir -p "${run_name}"
 
     psrecord --include-children --interval 1 \
         --log "${run_name}"/psrecord.csv \
         --log-format csv \
         --plot "${run_name}"/psrecord.png \
-        "cargo run --bin powdr_openvm_riscv -r --features metrics prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${run_name}\""
+        "cargo run --bin powdr_openvm_riscv -r --features metrics -- --artifacts-dir \"${artifacts_dir}\" prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${candidates_dir}\""
 
     python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
 
-    # apc_candidates.json is only available when apcs > 0
+    # apc_candidates.json is only available when apcs > 0. It lives in the
+    # shared candidates_dir, written on the first cache-miss run for this
+    # (guest, profile-input) pair.
     if [ "${apcs:-0}" -ne 0 ]; then
-        python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${run_name}"/apc_candidates.json --output "${run_name}"/effectiveness.png
+        python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${candidates_dir}"/apc_candidates.json --output "${run_name}"/effectiveness.png
     fi
 
-    # Clean up some files that we don't want to to push.
-    rm -f "${run_name}"/apc_candidate_*
+    # Clean up per-block snapshot files we don't want to push.
+    # Use `find -delete` rather than `rm glob`: large guests emit thousands of
+    # `apc_candidate_*` files (e.g. ~7k blocks), and the expanded glob blows
+    # past ARG_MAX ("Argument list too long"). `apc_candidates.json` doesn't
+    # match `apc_candidate_*` (no `_` after `candidate`), so it's preserved.
+    find "${candidates_dir}" -maxdepth 1 -name 'apc_candidate_*' -delete
 }
 
 # TODO: Some benchmarks are currently disabled to keep the nightly run below 6h.

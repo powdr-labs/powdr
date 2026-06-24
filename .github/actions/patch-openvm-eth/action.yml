@@ -8,8 +8,8 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: powdr-labs/openvm-eth
-        # Set once here — no inputs required elsewhere
-        ref: 7987264fe4e96b9077cdcc15e5192a69df9d8413
+        # Set once here — no inputs required elsewhere.
+        ref: b4204ea4e28298744088492b24062bf247cec122
         path: openvm-eth
 
     - name: Patch openvm-eth to use local powdr

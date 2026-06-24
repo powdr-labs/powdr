@@ -143,8 +143,8 @@ def prove_block(
     print(f"[modal] restored rpc-cache from {rpc_tgz}")
 
     # One apc-cache.tgz covers every apc count: the compile step on CI ran
-    # `--mode compile` for each apc back-to-back, accumulating apc-specific
-    # bin files in the same dir.
+    # `--mode compile` for each apc back-to-back, accumulating the staged
+    # generate/select/setup blobs (powdr's shared --artifacts-dir) in the dir.
     cache_tgz = f"/cache/{run_id}/apc-cache.tgz"
     if not os.path.exists(cache_tgz):
         raise FileNotFoundError(f"apc-cache.tgz missing on the volume: {cache_tgz}")

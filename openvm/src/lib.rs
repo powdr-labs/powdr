@@ -33,7 +33,7 @@ use openvm_transpiler::transpiler::Transpiler;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::execution_profile::ExecutionProfile;
 use powdr_autoprecompiles::DegreeBound;
-use powdr_autoprecompiles::{execution_profile::execution_profile, PowdrConfig};
+use powdr_autoprecompiles::{execution_profile::execution_profile, GenerateConfig};
 use powdr_extension::PowdrExtension;
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
@@ -100,8 +100,8 @@ pub const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
     bus_interactions: DEFAULT_OPENVM_DEGREE_BOUND - 1,
 };
 
-pub fn default_powdr_openvm_config(apc: u64, skip: u64) -> PowdrConfig {
-    PowdrConfig::new(apc, skip, DEFAULT_DEGREE_BOUND)
+pub fn default_generate_config() -> GenerateConfig {
+    GenerateConfig::new(DEFAULT_DEGREE_BOUND)
 }
 
 pub fn format_fe<F: PrimeField32>(v: F) -> String {
@@ -121,6 +121,10 @@ pub use customize_exe::{BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
 // A module for our extension
 pub mod isa;
 pub mod powdr_extension;
+
+/// Cached `generate → select → setup` pipeline shared by the CLI and external callers.
+pub mod pipeline;
+pub use pipeline::{make_default_empirical_constraints, RankedApcs, StagedPipeline};
 
 /// A custom VmConfig that wraps the SdkVmConfig, adding our custom extension.
 #[derive(Serialize, Deserialize, Clone)]

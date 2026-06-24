@@ -3,26 +3,21 @@ use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::{debugging::DebuggingRecorder, layers::Layer};
 use openvm_sdk::StdIn;
 use openvm_stark_sdk::bench::serialize_metric_snapshot;
-use powdr_autoprecompiles::adapter::AdapterApcWithStats;
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
-use powdr_autoprecompiles::pgo::{pgo_config, PgoType};
-use powdr_autoprecompiles::PowdrConfig;
-use powdr_openvm::BabyBearOpenVmApcAdapter;
+use powdr_autoprecompiles::execution_profile::ExecutionProfile;
+use powdr_autoprecompiles::pgo::PgoType;
+use powdr_autoprecompiles::{GenerateConfig, PgoConfig, SelectConfig};
+use powdr_openvm::StagedPipeline;
 use powdr_openvm_riscv::{
-    compile_apcs, compile_openvm, detect_empirical_constraints, setup, CompiledProgram,
-    GuestOptions, OriginalCompiledProgram, RiscvISA,
+    compile_openvm, detect_empirical_constraints, GuestOptions, OriginalCompiledProgram, RiscvISA,
+    DEFAULT_DEGREE_BOUND,
 };
 
 #[cfg(feature = "metrics")]
 use openvm_stark_sdk::metrics_tracing::TimingMetricsLayer;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use powdr_openvm::default_powdr_openvm_config;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::{fs, io};
 use tracing::Level;
 use tracing_forest::ForestLayer;
@@ -46,11 +41,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build + select APCs (fused).
-    ///
-    /// When the `PgoAdapter` trait is split in a follow-up, a separate
-    /// `generate-apcs` command will sit before `select-apcs` in the
-    /// pipeline and produce the unfiltered set of built APC candidates.
+    /// Build APC candidates and rank them. The ranking is what `select-apcs`
+    /// trims to `--autoprecompiles` (after `--skip`).
+    GenerateApcs(GenerateApcsArgs),
+
+    /// Trim the ranking from `generate-apcs` to `--autoprecompiles` (after `--skip`).
     SelectApcs(SelectArgs),
 
     /// Assemble the final program (selected APCs injected, prover/verifier keys).
@@ -76,11 +71,34 @@ struct ProfileArgs {
     profile_input: Option<u32>,
 }
 
-/// Args added by the APC-build stage.
+/// Args added by the APC build-and-rank stage.
 #[derive(Args, Clone, Debug)]
 struct GenerateApcsArgs {
     #[command(flatten)]
     profile: ProfileArgs,
+
+    /// PGO ranking strategy. Determines how candidates are ranked and, for
+    /// instruction/none, which candidates get built (the top `--apc-candidates`
+    /// of the metadata-sorted prefix).
+    #[arg(long, default_value_t = PgoType::default())]
+    pgo: PgoType,
+
+    /// Cap on the number of APC candidates to build (and rank).
+    ///
+    /// Unset = "build all eligible blocks". When `generate-apcs` runs as part
+    /// of a fused pipeline (`select-apcs`/`setup`/`execute`/`prove`) under
+    /// `--pgo instruction|none`, this defaults to `--autoprecompiles + --skip`;
+    /// set it explicitly to over-build for later selection sweeps. With
+    /// `--pgo cell` the default stays unset because Cell always builds every
+    /// eligible candidate anyway.
+    #[arg(long)]
+    apc_candidates: Option<u64>,
+
+    /// When `--pgo cell`, the optional max columns budget for the whole VM.
+    /// Influences the ranking — blocks that don't fit at their turn are
+    /// dropped from the ranking.
+    #[arg(long)]
+    max_columns: Option<usize>,
 
     /// Directory to persist all APC candidates + a metrics summary.
     #[arg(long)]
@@ -110,21 +128,13 @@ struct SelectArgs {
     #[command(flatten)]
     generate: GenerateApcsArgs,
 
-    /// Number of APCs to embed after selection.
+    /// Number of APCs to embed (taken from the top of the ranking after `--skip`).
     #[arg(long, default_value_t = 0)]
     autoprecompiles: usize,
 
     /// Number of top-ranked APCs to skip during selection.
     #[arg(long, default_value_t = 0)]
     skip: usize,
-
-    /// PGO ranking strategy.
-    #[arg(long, default_value_t = PgoType::default())]
-    pgo: PgoType,
-
-    /// When `--pgo cell`, the optional max columns budget for the whole VM.
-    #[arg(long)]
-    max_columns: Option<usize>,
 }
 
 /// Args added by the setup stage (currently none — kept for future args + cache hierarchy).
@@ -179,34 +189,73 @@ fn main() -> Result<(), io::Error> {
     setup_tracing_with_log_level(Level::INFO);
 
     if let Some(command) = cli.command {
-        run_command(command, artifacts_dir.as_deref());
+        run_command(command, artifacts_dir);
         Ok(())
     } else {
         Cli::command().print_help()
     }
 }
 
-fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
+fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
     match command {
+        Commands::GenerateApcs(args) => {
+            validate_generate_args(&args, false);
+            let pipeline = build_pipeline(&args.profile, artifacts_dir);
+            let generate = GenerateConfig::from(&args);
+            let pgo_config = pgo_config_from_args(&args);
+            let ranked = pipeline.generate_apcs(
+                &generate,
+                &pgo_config,
+                make_pgo_profile,
+                make_empirical_constraints,
+            );
+            tracing::info!(
+                "Built and ranked {} autoprecompile candidates",
+                ranked.len()
+            );
+        }
+
         Commands::SelectApcs(args) => {
-            validate_select_args(&args, false);
-            let pipeline = Pipeline::new(args.generate.profile.clone());
-            let apcs = pipeline.run_select_apcs(&args, artifacts_dir);
+            validate_generate_args(&args.generate, false);
+            let pipeline = build_pipeline(&args.generate.profile, artifacts_dir);
+            let (generate, select, pgo_config) = args.pipeline_inputs();
+            let apcs = pipeline.select_apcs(
+                &generate,
+                &pgo_config,
+                select,
+                make_pgo_profile,
+                make_empirical_constraints,
+            );
             tracing::info!("Selected {} autoprecompiles", apcs.len());
         }
 
         Commands::Setup(args) => {
-            validate_select_args(&args.select, true);
-            let pipeline = Pipeline::new(args.select.generate.profile.clone());
-            let _ = pipeline.run_setup(&args, artifacts_dir);
+            validate_generate_args(&args.select.generate, true);
+            let pipeline = build_pipeline(&args.select.generate.profile, artifacts_dir);
+            let (generate, select, pgo_config) = args.select.pipeline_inputs();
+            let _ = pipeline.setup(
+                &generate,
+                &pgo_config,
+                select,
+                make_pgo_profile,
+                make_empirical_constraints,
+            );
+            tracing::info!("Setup completed.");
         }
 
         Commands::Execute(args) => {
-            validate_select_args(&args.setup.select, true);
+            validate_generate_args(&args.setup.select.generate, true);
             let runtime_input = args.input;
-            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
+            let pipeline = build_pipeline(&args.setup.select.generate.profile, artifacts_dir);
             let run = || {
-                let program = pipeline.run_setup(&args.setup, artifacts_dir);
+                let (generate, select, pgo_config) = args.setup.select.pipeline_inputs();
+                let program = pipeline.setup(
+                    &generate,
+                    &pgo_config,
+                    select,
+                    make_pgo_profile,
+                    make_empirical_constraints,
+                );
                 powdr_openvm::execute(program, stdin_from(runtime_input)).unwrap();
             };
             if let Some(metrics_path) = args.metrics {
@@ -220,13 +269,20 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
         }
 
         Commands::Prove(args) => {
-            validate_select_args(&args.setup.select, true);
+            validate_generate_args(&args.setup.select.generate, true);
             let runtime_input = args.input;
             let mock = args.mock;
             let recursion = args.recursion;
-            let pipeline = Pipeline::new(args.setup.select.generate.profile.clone());
+            let pipeline = build_pipeline(&args.setup.select.generate.profile, artifacts_dir);
             let run = || {
-                let program = pipeline.run_setup(&args.setup, artifacts_dir);
+                let (generate, select, pgo_config) = args.setup.select.pipeline_inputs();
+                let program = pipeline.setup(
+                    &generate,
+                    &pgo_config,
+                    select,
+                    make_pgo_profile,
+                    make_empirical_constraints,
+                );
                 powdr_openvm_riscv::prove(
                     &program,
                     mock,
@@ -248,8 +304,8 @@ fn run_command(command: Commands, artifacts_dir: Option<&Path>) {
     }
 }
 
-fn validate_select_args(args: &SelectArgs, for_execution: bool) {
-    if args.generate.superblocks > 1 && !matches!(args.pgo, PgoType::Cell) {
+fn validate_generate_args(args: &GenerateApcsArgs, for_execution: bool) {
+    if args.superblocks > 1 && !matches!(args.pgo, PgoType::Cell) {
         Cli::command()
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
@@ -257,7 +313,7 @@ fn validate_select_args(args: &SelectArgs, for_execution: bool) {
             )
             .exit();
     }
-    if for_execution && args.generate.superblocks > 1 {
+    if for_execution && args.superblocks > 1 {
         Cli::command()
             .error(
                 clap::error::ErrorKind::ArgumentConflict,
@@ -267,143 +323,69 @@ fn validate_select_args(args: &SelectArgs, for_execution: bool) {
     }
 }
 
-fn build_powdr_config(args: &SelectArgs) -> PowdrConfig {
-    let mut powdr_config =
-        default_powdr_openvm_config(args.autoprecompiles as u64, args.skip as u64);
-    if let Some(apc_candidates_dir) = &args.generate.apc_candidates_dir {
-        powdr_config = powdr_config.with_apc_candidates_dir(apc_candidates_dir);
-    }
-    powdr_config
-        .with_optimistic_precompiles(args.generate.optimistic_precompiles)
-        .with_superblocks(
-            args.generate.superblocks,
-            args.generate.apc_max_instructions,
-            args.generate.apc_exec_count_cutoff,
-        )
-}
-
-/// Pipeline runner. Eagerly loads the guest crate so that we can mix a hash
-/// of the transpiled `VmExe` into every stage's cache key — otherwise a
-/// guest-source change with identical CLI args would silently return stale
-/// cached artifacts. `cargo build` is a noop when nothing changed, so the
-/// always-load cost is small (~1–2 s) on a true cache hit.
-struct Pipeline {
-    profile_args: ProfileArgs,
-    guest_program: OriginalCompiledProgram<'static, RiscvISA>,
-    guest_hash: String,
-}
-
-impl Pipeline {
-    fn new(profile_args: ProfileArgs) -> Self {
-        let guest_program = compile_openvm(&profile_args.guest, GuestOptions::default()).unwrap();
-        let guest_hash = hash_guest_exe(&guest_program);
-        Self {
-            profile_args,
-            guest_program,
-            guest_hash,
+impl From<&GenerateApcsArgs> for GenerateConfig {
+    fn from(args: &GenerateApcsArgs) -> Self {
+        let mut generate = GenerateConfig::new(DEFAULT_DEGREE_BOUND)
+            .with_apc_candidates(args.apc_candidates)
+            .with_optimistic_precompiles(args.optimistic_precompiles)
+            .with_superblocks(
+                args.superblocks,
+                args.apc_max_instructions,
+                args.apc_exec_count_cutoff,
+            );
+        if let Some(path) = &args.apc_candidates_dir {
+            generate = generate.with_apc_candidates_dir(path);
         }
-    }
-
-    /// Run the profile + APC-build/select pipeline, or load it from the cache.
-    fn run_select_apcs(
-        &self,
-        args: &SelectArgs,
-        artifacts_dir: Option<&Path>,
-    ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'static, RiscvISA>>> {
-        let hash = stage_hash(args, &self.guest_hash);
-        if let Some(cached) = load_cached(artifacts_dir, "select", &hash) {
-            tracing::info!("cache hit: select/{hash}");
-            return cached;
-        }
-        let powdr_config = build_powdr_config(args);
-        let profile_stdin = stdin_from(self.profile_args.profile_input);
-        let empirical_constraints = maybe_compute_empirical_constraints(
-            &self.guest_program,
-            &powdr_config,
-            profile_stdin.clone(),
-        );
-        let execution_profile =
-            powdr_openvm::execution_profile_from_guest(&self.guest_program, profile_stdin.clone());
-        let pgo = pgo_config(args.pgo, args.max_columns, execution_profile);
-        let apcs = compile_apcs(
-            &self.guest_program,
-            &powdr_config,
-            pgo,
-            empirical_constraints,
-        );
-        save_cached(artifacts_dir, "select", &hash, &apcs);
-        apcs
-    }
-
-    /// Run the full pipeline up to setup (selected APCs injected, keys assembled),
-    /// or load the resulting `CompiledProgram` from the cache.
-    fn run_setup(
-        self,
-        args: &SetupArgs,
-        artifacts_dir: Option<&Path>,
-    ) -> CompiledProgram<RiscvISA> {
-        let hash = stage_hash(args, &self.guest_hash);
-        if let Some(cached) = load_cached(artifacts_dir, "setup", &hash) {
-            tracing::info!("cache hit: setup/{hash}");
-            return cached;
-        }
-        let apcs = self.run_select_apcs(&args.select, artifacts_dir);
-        let powdr_config = build_powdr_config(&args.select);
-        let program = setup(self.guest_program, apcs, powdr_config.degree_bound);
-        save_cached(artifacts_dir, "setup", &hash, &program);
-        program
+        generate
     }
 }
 
-/// Hash of the transpiled `VmExe` from `compile_openvm`. Captures any guest
-/// change (source, deps, toolchain) that would affect what the rest of the
-/// pipeline operates on.
-fn hash_guest_exe(guest: &OriginalCompiledProgram<'_, RiscvISA>) -> String {
-    let bytes = serde_cbor::to_vec(&*guest.exe).expect("serialize VmExe for hashing");
-    let mut hasher = DefaultHasher::new();
-    bytes.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
-}
-
-// ---------- cache helpers ----------
-
-/// `DefaultHasher` over the `Debug` repr of the args struct plus the guest
-/// `VmExe` hash. Unstable across Rust releases (accepted: caches re-fill on
-/// upgrade).
-fn stage_hash<A: std::fmt::Debug>(args: &A, guest_hash: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    format!("{args:?}").hash(&mut hasher);
-    guest_hash.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
-}
-
-fn cache_path(dir: &Path, stage: &str, hash: &str) -> PathBuf {
-    dir.join(stage).join(hash).join("artifact.cbor")
-}
-
-fn load_cached<T: DeserializeOwned>(
-    artifacts_dir: Option<&Path>,
-    stage: &str,
-    hash: &str,
-) -> Option<T> {
-    let dir = artifacts_dir?;
-    let path = cache_path(dir, stage, hash);
-    let file = fs::File::open(&path).ok()?;
-    match serde_cbor::from_reader(file) {
-        Ok(v) => Some(v),
-        Err(err) => {
-            tracing::warn!("ignoring corrupt cache entry {}: {err}", path.display());
-            None
-        }
+impl From<&SelectArgs> for SelectConfig {
+    fn from(args: &SelectArgs) -> Self {
+        SelectConfig::new(args.autoprecompiles as u64, args.skip as u64)
     }
 }
 
-fn save_cached<T: Serialize>(artifacts_dir: Option<&Path>, stage: &str, hash: &str, value: &T) {
-    let Some(dir) = artifacts_dir else { return };
-    let path = cache_path(dir, stage, hash);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let file = fs::File::create(&path).unwrap();
-    serde_cbor::to_writer(file, value).unwrap();
+impl SelectArgs {
+    /// Bundle the three values every chained stage (select / setup / execute /
+    /// prove) needs: a `GenerateConfig` with `with_select_defaults` already
+    /// applied, the matching `SelectConfig`, and the `PgoConfig` derived from
+    /// the embedded `GenerateApcsArgs`.
+    fn pipeline_inputs(&self) -> (GenerateConfig, SelectConfig, PgoConfig) {
+        let select = SelectConfig::from(self);
+        let generate =
+            GenerateConfig::from(&self.generate).with_select_defaults(self.generate.pgo, select);
+        let pgo_config = pgo_config_from_args(&self.generate);
+        (generate, select, pgo_config)
+    }
+}
+
+/// Compile the guest crate referenced by `profile` and wrap it in a
+/// [`StagedPipeline`] keyed at `artifacts_dir`.
+fn build_pipeline(
+    profile: &ProfileArgs,
+    artifacts_dir: Option<PathBuf>,
+) -> StagedPipeline<RiscvISA> {
+    let guest = compile_openvm(&profile.guest, GuestOptions::default()).unwrap();
+    StagedPipeline::new(guest, artifacts_dir)
+}
+
+fn make_pgo_profile(
+    guest: &OriginalCompiledProgram<'static, RiscvISA>,
+    inputs: &[u8],
+) -> ExecutionProfile {
+    let profile_input = serde_cbor::from_slice(inputs).unwrap();
+    powdr_openvm::execution_profile_from_guest(guest, stdin_from(profile_input))
+}
+
+/// Build a `PgoConfig` from the CLI args; `inputs` is the serialized
+/// `profile_input` (an `Option<u32>` round-tripped through serde_cbor).
+fn pgo_config_from_args(args: &GenerateApcsArgs) -> PgoConfig {
+    PgoConfig::new(
+        args.pgo,
+        args.max_columns,
+        serde_cbor::to_vec(&args.profile.profile_input).unwrap(),
+    )
 }
 
 // ---------- misc helpers ----------
@@ -441,25 +423,23 @@ pub fn run_with_metric_collection_to_file<R>(file: fs::File, f: impl FnOnce() ->
     res
 }
 
-/// If optimistic precompiles are enabled, compute empirical constraints from the execution
-/// of the guest program on the given stdin, and save them to disk.
-fn maybe_compute_empirical_constraints(
-    guest_program: &OriginalCompiledProgram<RiscvISA>,
-    powdr_config: &PowdrConfig,
-    stdin: StdIn,
+/// Compute empirical constraints from the execution of the guest program on the given stdin, and save them to disk.
+fn make_empirical_constraints(
+    guest: &OriginalCompiledProgram<'static, RiscvISA>,
+    generate: &GenerateConfig,
+    inputs: &[u8],
 ) -> EmpiricalConstraints {
-    if !powdr_config.should_use_optimistic_precompiles {
-        return EmpiricalConstraints::default();
-    }
-
     tracing::warn!(
         "Optimistic precompiles are not implemented yet. Computing empirical constraints..."
     );
 
-    let empirical_constraints =
-        detect_empirical_constraints(guest_program, powdr_config.degree_bound, vec![stdin]);
+    let profile_input = serde_cbor::from_slice(inputs).unwrap();
+    let stdin = stdin_from(profile_input);
 
-    if let Some(path) = &powdr_config.apc_candidates_dir_path {
+    let empirical_constraints =
+        detect_empirical_constraints(guest, generate.degree_bound, vec![stdin]);
+
+    if let Some(path) = &generate.apc_candidates_dir_path {
         fs::create_dir_all(path).expect("Failed to create apc candidates directory");
         tracing::info!(
             "Saving empirical constraints debug info to {}/empirical_constraints.json",

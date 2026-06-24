@@ -24,10 +24,10 @@ use powdr_autoprecompiles::adapter::{
 use powdr_autoprecompiles::blocks::{Instruction, PcStep};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
-use powdr_autoprecompiles::pgo::{ApcCandidate, CellPgo, InstructionPgo, NonePgo, PgoConfig};
+use powdr_autoprecompiles::pgo::{ApcCandidate, CellPgo, InstructionPgo, NonePgo, PgoData};
 use powdr_autoprecompiles::DegreeBound;
-use powdr_autoprecompiles::PowdrConfig;
 use powdr_autoprecompiles::VmConfig;
+use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
 use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
@@ -196,18 +196,18 @@ impl<F: PrimeField32, ISA: OpenVmISA> Instruction<F> for Instr<F, ISA> {
     }
 }
 
-/// Build and select the autoprecompiles for `original_program` according to `pgo_config`.
+/// Build and rank candidate autoprecompiles for `original_program` under `pgo_data`.
 ///
-/// This runs the APC generation pipeline up to (but not including) the program-injection
-/// and `SpecializedConfig` assembly that [`setup`] performs.
-pub fn compile_apcs<'a, ISA: OpenVmISA>(
+/// The returned `Vec` is ordered by the PGO strategy's ranking (best candidate first),
+/// and capped by `generate.apc_candidates` (`None` = no cap).
+pub fn generate_apcs<'a, ISA: OpenVmISA>(
     original_program: &OriginalCompiledProgram<'a, ISA>,
-    config: &PowdrConfig,
-    pgo_config: PgoConfig,
+    generate: &GenerateConfig,
+    pgo_data: PgoData,
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>> {
-    match pgo_config {
-        PgoConfig::Cell(pgo_data, max_total_columns) => {
+    match pgo_data {
+        PgoData::Cell(pgo_data, max_total_columns) => {
             let max_total_apc_columns = max_total_columns.map(|max_total_columns| {
                 let total_non_apc_columns: usize = original_program
                     .vm_config
@@ -217,9 +217,9 @@ pub fn compile_apcs<'a, ISA: OpenVmISA>(
                     .sum();
                 max_total_columns - total_non_apc_columns
             });
-            compile_apcs_with_adapter(
+            generate_apcs_with_adapter(
                 original_program,
-                config,
+                generate,
                 CellPgo::<_, OpenVmApcCandidate<ISA>>::with_pgo_data_and_max_columns(
                     pgo_data,
                     max_total_apc_columns,
@@ -227,33 +227,41 @@ pub fn compile_apcs<'a, ISA: OpenVmISA>(
                 empirical_constraints,
             )
         }
-        PgoConfig::Instruction(pgo_data) => compile_apcs_with_adapter(
+        PgoData::Instruction(pgo_data) => generate_apcs_with_adapter(
             original_program,
-            config,
+            generate,
             InstructionPgo::with_pgo_data(pgo_data),
             empirical_constraints,
         ),
-        PgoConfig::None => compile_apcs_with_adapter(
+        PgoData::None => generate_apcs_with_adapter(
             original_program,
-            config,
+            generate,
             NonePgo::default(),
             empirical_constraints,
         ),
     }
 }
 
-fn compile_apcs_with_adapter<
+/// Trim a ranked list (output of [`generate_apcs`]) to the configured selection size.
+pub fn select_apcs<'a, ISA: OpenVmISA>(
+    ranked: Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>>,
+    select: SelectConfig,
+) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>> {
+    powdr_autoprecompiles::adapter::select_apcs::<BabyBearOpenVmApcAdapter<'a, ISA>>(ranked, select)
+}
+
+fn generate_apcs_with_adapter<
     'a,
     ISA: OpenVmISA,
     P: PgoAdapter<Adapter = BabyBearOpenVmApcAdapter<'a, ISA>>,
 >(
     original_program: &OriginalCompiledProgram<'a, ISA>,
-    config: &PowdrConfig,
+    generate: &GenerateConfig,
     pgo: P,
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>> {
     let original_config = &original_program.vm_config;
-    let airs = original_config.airs(config.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let airs = original_config.airs(generate.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {
@@ -292,9 +300,10 @@ fn compile_apcs_with_adapter<
         .collect();
 
     let start = std::time::Instant::now();
-    let apcs = pgo.filter_blocks_and_create_apcs_with_pgo(
-        blocks,
-        config,
+    let exec_blocks = powdr_autoprecompiles::adapter::detect_blocks(&pgo, blocks, generate);
+    let apcs = pgo.create_apcs_with_pgo(
+        exec_blocks,
+        generate,
         vm_config,
         symbols,
         empirical_constraints.apply_pc_threshold(),
@@ -305,7 +314,7 @@ fn compile_apcs_with_adapter<
 
 /// Inject the selected APCs into `original_program` and assemble the final [`CompiledProgram`].
 ///
-/// `apcs` is the output of [`compile_apcs`].
+/// `apcs` is the output of [`select_apcs`].
 pub fn setup<'a, ISA: OpenVmISA>(
     original_program: OriginalCompiledProgram<'a, ISA>,
     apcs: Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>>,

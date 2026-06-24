@@ -12,9 +12,9 @@ repository.workspace = true
 [dev-dependencies]
 powdr-autoprecompiles.workspace = true
 pretty_assertions.workspace = true
-sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/v6.0.2-apc-base" }
-sp1-core-machine = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/v6.0.2-apc-base" }
-sp1-primitives = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/v6.0.2-apc-base" }
+sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/split-powdr-config" }
+sp1-core-machine = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/split-powdr-config" }
+sp1-primitives = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/split-powdr-config" }
 
 [lints]
 workspace = true

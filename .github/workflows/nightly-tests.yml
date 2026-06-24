@@ -192,17 +192,20 @@ jobs:
       - name: Prefetch RPC cache (CPU)
         run: |
           cd openvm-eth
+          # Start every nightly from a fresh APC cache.
+          rm -rf apc-cache
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
           ./run.sh --apc 0 --block "$BLOCK_NUMBER" --mode execute || exit 1
           tar -czf ../rpc-cache.tgz rpc-cache
 
-      # `--mode compile --apc N` writes apc-specific bin files (proving and
-      # verification keys for that apc count) into apc-cache/ under
-      # non-colliding names (`reth-apc-${N}.bin`), so the dir accumulates
-      # entries and one tarball serves every Modal + CPU prove-stark
-      # invocation. Compile for every apc count we'll prove later
-      # (Modal does {0,10,30}; CPU does {0,3,10,30,100}) so all five
-      # CPU iterations skip recompilation. Modal ignores the extra bins.
+      # `--mode compile --apc N` runs powdr's staged generate→select→setup
+      # pipeline, persisting each stage's blob into the shared --artifacts-dir
+      # (openvm-eth defaults it to apc-cache/). Under the default cell PGO the
+      # `generate` blob (build+rank every candidate) is keyed independently of
+      # --apc, so it's built once and reused; only the cheap per-N select+setup
+      # blobs accumulate. Compile every apc count we'll prove later (Modal does
+      # {0,10,30}; CPU does {0,3,10,30,100}) so one tarball serves every Modal +
+      # CPU prove-stark run and all later iterations hit the cache.
       - name: Compile APC caches (CPU)
         run: |
           cd openvm-eth
@@ -304,12 +307,12 @@ jobs:
             "$RES_DIR/apc_candidates.json" --output "$RES_DIR/effectiveness.png"
 
       # ---------- CPU-side reth bench ----------
-      # apc-cache is keyed by `reth-apc-<N>.bin` (run.sh line 341 sets
-      # APC_SETUP_NAME=reth-apc-${APC}), so different --apc values use
-      # different files in the same dir without colliding. The compile
-      # step above already left reth-apc-{0,10,30}.bin in apc-cache/, so
-      # the matching prove-stark calls below skip recompilation. We
-      # therefore don't `rm -rf apc-cache` between iterations.
+      # The compile step above already populated the shared --artifacts-dir
+      # (apc-cache/) with generate/select/setup blobs for every apc count, so
+      # these prove-stark calls hit the setup cache and skip straight to
+      # proving. The cache was wiped once at job start (Prefetch step), so it
+      # only holds blobs from THIS run — don't wipe it again between iterations
+      # here, or each apc would force a full candidate rebuild.
       - name: Run reth benchmark
         run: |
           source .venv/bin/activate
@@ -511,26 +514,23 @@ jobs:
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
+          # For each run, start with a fresh APC cache
+          rm -rf apc-cache
+
           # prove with no APCs
           ./run.sh --cuda --block 24171377 --apc 0 --mode prove-stark || exit 1
-          # remove apc cache to not interfere with the next runs
-          rm -rf apc-cache
           echo "Finished proving with no APCs"
           mv metrics.json $RES_DIR/apc000.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # prove with 10 APCs
           ./run.sh --cuda --block 24171377 --apc 10 --mode prove-stark || exit 1
-          # remove apc cache to not interfere with the next runs
-          rm -rf apc-cache
           echo "Finished proving with 10 APCs"
           mv metrics.json $RES_DIR/apc010.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
           # prove with 30 APCs
           ./run.sh --cuda --block 24171377 --apc 30 --mode prove-stark || exit 1
-          # remove apc cache to not interfere with the next runs
-          rm -rf apc-cache
           echo "Finished proving with 30 APCs"
           mv metrics.json $RES_DIR/apc030.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt

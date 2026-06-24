@@ -126,14 +126,14 @@ fn count_and_update_execution(
     (total_count, new_execution)
 }
 
-/// Greedily select blocks based on density.
-/// Once a candidate is selected, the value of the remaining candidates are updated to reflect the new execution (with the selection removed).
-/// Returns the indices of the selected blocks, together with how many times each would run if applied over the execution in the selected order.
-pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
+/// Greedily rank blocks by density (value-per-cost), updating remaining
+/// candidates' value as each is picked to reflect the execution minus the
+/// already-picked candidates.
+/// Returns the indices of the ranked blocks in the order they were picked.
+pub fn rank_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
     apcs: &[C],
     blocks: &[BlockAndStats<A::Instruction>],
     budget: usize,
-    max_selected: usize,
     execution_bb_runs: &[(ExecutionBasicBlockRun, u32)],
 ) -> Vec<usize> {
     let mut candidates = blocks
@@ -149,7 +149,7 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
         .enumerate()
         .collect();
 
-    let mut selected = vec![];
+    let mut ranked = vec![];
     let mut cumulative_cost = 0;
     let mut current_execution = execution_bb_runs.to_vec();
 
@@ -177,13 +177,9 @@ pub fn select_blocks_greedy<A: Adapter, C: ApcCandidate<A>>(
         // the item fits, increment the cumulative cost and update the execution by removing its occurrences
         cumulative_cost += c.cost();
         current_execution = new_execution;
-        selected.push(idx);
-
-        if selected.len() >= max_selected {
-            break;
-        }
+        ranked.push(idx);
     }
-    selected
+    ranked
 }
 
 #[cfg(test)]

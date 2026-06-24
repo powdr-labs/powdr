@@ -52,21 +52,23 @@ pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
-pub use pgo::{PgoConfig, PgoType};
+pub use pgo::{PgoConfig, PgoData, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
 pub mod execution;
 pub mod export;
 pub mod optimistic;
+pub mod staged_cache;
 pub mod trace_handler;
 
-#[derive(Clone)]
-pub struct PowdrConfig {
-    /// Number of autoprecompiles to generate.
-    pub autoprecompiles: u64,
-    /// Number of basic blocks to skip for autoprecompiles.
-    /// This is either the largest N if no PGO, or the costliest N with PGO.
-    pub skip_autoprecompiles: u64,
+/// Inputs to the build-and-rank stage of the autoprecompile pipeline.
+#[derive(Clone, Debug, Hash)]
+pub struct GenerateConfig {
+    /// Cap on the number of candidate APCs built/ranked.
+    /// `None` means "build all eligible candidates".
+    /// Depending on the PGO strategy, the cap may be ignored
+    /// (meaning that more APCs are computed).
+    pub apc_candidates: Option<u64>,
     /// Maximum number of basic blocks included in a superblock.
     /// Default of 1 means only basic blocks are considered.
     pub superblock_max_bb_count: u8,
@@ -82,12 +84,10 @@ pub struct PowdrConfig {
     pub should_use_optimistic_precompiles: bool,
 }
 
-impl PowdrConfig {
-    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, degree_bound: DegreeBound) -> Self {
+impl GenerateConfig {
+    pub fn new(degree_bound: DegreeBound) -> Self {
         Self {
-            autoprecompiles,
-            skip_autoprecompiles,
-            // superblocks disabled by default
+            apc_candidates: None,
             superblock_max_bb_count: 1,
             apc_max_instructions: u32::MAX,
             apc_exec_count_cutoff: 1,
@@ -95,6 +95,11 @@ impl PowdrConfig {
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
         }
+    }
+
+    pub fn with_apc_candidates(mut self, apc_candidates: Option<u64>) -> Self {
+        self.apc_candidates = apc_candidates;
+        self
     }
 
     pub fn with_superblocks(
@@ -122,9 +127,47 @@ impl PowdrConfig {
         self
     }
 
+    pub fn with_apc_max_instructions(mut self, max_instructions: u32) -> Self {
+        self.apc_max_instructions = max_instructions;
+        self
+    }
+
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
         self
+    }
+
+    /// Single source of truth for the `apc_candidates` default policy.
+    /// Callers should invoke this when both `generate` and `select`
+    /// configs are known.
+    pub fn with_select_defaults(mut self, pgo: pgo::PgoType, select: SelectConfig) -> Self {
+        if self.apc_candidates.is_some() {
+            return self;
+        }
+        self.apc_candidates = match pgo {
+            pgo::PgoType::Cell => (select.autoprecompiles == 0).then_some(0),
+            pgo::PgoType::Instruction | pgo::PgoType::None => {
+                Some(select.autoprecompiles + select.skip)
+            }
+        };
+        self
+    }
+}
+
+/// Inputs to the selection stage — trimming a generate-stage ranking down to
+/// `autoprecompiles` items after skipping `skip` from the top.
+#[derive(Clone, Copy, Debug, Default, Hash)]
+pub struct SelectConfig {
+    pub autoprecompiles: u64,
+    pub skip: u64,
+}
+
+impl SelectConfig {
+    pub fn new(autoprecompiles: u64, skip: u64) -> Self {
+        Self {
+            autoprecompiles,
+            skip,
+        }
     }
 }
 

@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, io::BufWriter};
 
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use selection::select_blocks_greedy;
+use selection::rank_blocks_greedy;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
     evaluation::{evaluate_apc, EvaluationResult},
     execution_profile::ExecutionProfile,
     export::{ExportLevel, ExportOptions},
-    EmpiricalConstraints, PowdrConfig,
+    EmpiricalConstraints, GenerateConfig,
 };
 
 mod selection;
@@ -102,13 +102,23 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
     fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
-        config: &PowdrConfig,
+        generate: &GenerateConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        if config.autoprecompiles == 0 {
-            return vec![];
+        // Short-circuit when the caller signals "no candidates wanted".
+        // `apc_candidates = Some(0)` is the agreed signal for this; positive
+        // caps are ignored (Cell's density ranking needs every candidate's
+        // post-opt cost and a pre-build cap would degrade ranking quality).
+        match generate.apc_candidates {
+            Some(0) => return vec![],
+            Some(_) => {
+                tracing::warn!(
+                    "GenerateConfig::apc_candidates is ignored for Cell PGO; building every eligible candidate"
+                );
+            }
+            None => {}
         }
 
         let AdapterExecutionBlocks::<Self::Adapter> {
@@ -129,7 +139,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                 let start = std::time::Instant::now();
                 let res = try_generate_candidate::<A, C>(
                     block_and_stats.block.clone(),
-                    config,
+                    generate,
                     &vm_config,
                     &empirical_constraints,
                 )?;
@@ -143,7 +153,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
             .collect();
 
         // write the APC candidates JSON to disk if the directory is specified.
-        if let Some(apc_candidates_dir_path) = &config.apc_candidates_dir_path {
+        if let Some(apc_candidates_dir_path) = &generate.apc_candidates_dir_path {
             let apcs = apcs
                 .iter()
                 .zip_eq(&blocks)
@@ -157,20 +167,16 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
                 .expect("Failed to write APC candidates JSON to file");
         }
 
-        // select best candidates
+        // Rank candidates by density; the column budget can terminate the
+        // ranking early if it's exhausted. The trim to (skip, autoprecompiles)
+        // happens later in `select_apcs`.
         let budget = self.max_total_apc_columns.unwrap_or(usize::MAX);
-        let max_selected = (config.autoprecompiles + config.skip_autoprecompiles) as usize;
-        let selection =
-            select_blocks_greedy(&apcs, &blocks, budget, max_selected, &execution_bb_runs);
+        let ranking = rank_blocks_greedy(&apcs, &blocks, budget, &execution_bb_runs);
 
-        // skip per config
-        let skip = (config.skip_autoprecompiles as usize).min(selection.len());
-
-        // filter and order the apcs using the selection
+        // Reorder the apcs by the ranking; everything outside the ranking is dropped.
         let mut apcs: Vec<_> = apcs.into_iter().map(|apc| Some(apc.into_inner())).collect();
-        selection
+        ranking
             .into_iter()
-            .skip(skip)
             .map(|position| apcs[position].take().unwrap())
             .collect()
     }
@@ -183,19 +189,19 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
 // Try and build an autoprecompile candidate from a superblock.
 fn try_generate_candidate<A: Adapter, C: ApcCandidate<A>>(
     block: SuperBlock<A::Instruction>,
-    config: &PowdrConfig,
+    generate: &GenerateConfig,
     vm_config: &AdapterVmConfig<A>,
     empirical_constraints: &EmpiricalConstraints,
 ) -> Option<C> {
     let export_options = ExportOptions::new(
-        config.apc_candidates_dir_path.clone(),
+        generate.apc_candidates_dir_path.clone(),
         &block.start_pcs(),
         ExportLevel::OnlyAPC,
     );
     let apc = crate::build::<A>(
         block.clone(),
         vm_config.clone(),
-        config.degree_bound,
+        generate.degree_bound,
         export_options,
         empirical_constraints,
     )
