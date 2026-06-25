@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782344537243,
+  "lastUpdate": 1782431046805,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -415901,6 +415901,34 @@ window.BENCHMARK_DATA = {
             "name": "optimize-keccak/optimize",
             "value": 24093566255,
             "range": "± 977925006",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "54d6ac3e4bb1cb7c61479154293e7e6378e65b00",
+          "message": "Restore APC Analyzer link for guest benches in nightly README (#3768)\n\nSince #3763, the \"APC Analyzer\" links [are missing in the nightly\nresults](https://github.com/powdr-labs/bench-results/tree/gh-pages/results/2026-06-19-0503)\nfor most experiments. This PR should fix it, I manually started a\n[nightly\njob](https://github.com/powdr-labs/powdr/actions/runs/27825607391) to\nconfirm.\n\n---------\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-06-24T13:26:51Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/54d6ac3e4bb1cb7c61479154293e7e6378e65b00"
+        },
+        "date": 1782431037949,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 21328517090,
+            "range": "± 520049196",
             "unit": "ns/iter"
           }
         ]
