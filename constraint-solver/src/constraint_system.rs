@@ -184,6 +184,27 @@ impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
     }
 }
 
+impl<T: Clone, E> ComputationMethod<T, E> {
+    pub fn convert_expression_type<E2>(
+        self,
+        converter: &impl Fn(E) -> E2,
+    ) -> ComputationMethod<T, E2> {
+        match self {
+            ComputationMethod::Constant(c) => ComputationMethod::Constant(c.clone()),
+            ComputationMethod::QuotientOrZero(e1, e2) => {
+                ComputationMethod::QuotientOrZero(converter(e1), converter(e2))
+            }
+            ComputationMethod::IfEqZero(e, then_method, else_method) => {
+                ComputationMethod::IfEqZero(
+                    converter(e),
+                    Box::new(then_method.convert_expression_type(converter)),
+                    Box::new(else_method.convert_expression_type(converter)),
+                )
+            }
+        }
+    }
+}
+
 impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
     ComputationMethod<T, GroupedExpression<T, V>>
 {
