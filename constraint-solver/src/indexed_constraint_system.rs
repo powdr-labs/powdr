@@ -844,7 +844,7 @@ mod tests {
         system.substitute_by_known(&"x1", &1.into());
         assert_eq!(
             format!("{system}"),
-            "d1 := QuotientOrZero(1, x2)\nd2 := QuotientOrZero(y1, 8)"
+            "d1 (new) := QuotientOrZero(1, x2)\nd2 (new) := QuotientOrZero(y1, 8)"
         );
     }
 }

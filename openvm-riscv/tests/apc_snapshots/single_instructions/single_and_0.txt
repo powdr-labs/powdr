@@ -36,3 +36,6 @@ mult=is_valid, args=[15360 * writes_aux__base__prev_timestamp_0 + 15360 * writes
 
 // Algebraic constraints:
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

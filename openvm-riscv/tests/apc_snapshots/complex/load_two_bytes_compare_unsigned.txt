@@ -133,3 +133,6 @@ cmp_result_2 * (cmp_result_2 - 1) = 0
 flags__1_0 * flags__2_0 + 2 * flags__0_0 * flags__2_0 + 2 * flags__1_0 * flags__3_0 + 3 * flags__2_0 * flags__3_0 = 0
 flags__1_1 * flags__2_1 + 2 * flags__0_1 * flags__2_1 + 2 * flags__1_1 * flags__3_1 + 3 * flags__2_1 * flags__3_1 = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

@@ -66,3 +66,6 @@ mult=is_valid, args=[a__2_2, a__3_2, 0, 0]
 (120 * a__0_2 + 30720 * a__1_2 + 7864320 * a__2_2 - (120 * writes_aux__prev_data__0_2 + 30720 * writes_aux__prev_data__1_2 + 7864320 * writes_aux__prev_data__2_2 + 120 * is_valid)) * (120 * a__0_2 + 30720 * a__1_2 + 7864320 * a__2_2 - (120 * writes_aux__prev_data__0_2 + 30720 * writes_aux__prev_data__1_2 + 7864320 * writes_aux__prev_data__2_2 + 121)) = 0
 (943718400 * writes_aux__prev_data__0_2 + 120 * a__1_2 + 30720 * a__2_2 + 7864320 * a__3_2 + 943718400 * is_valid - (120 * writes_aux__prev_data__1_2 + 30720 * writes_aux__prev_data__2_2 + 7864320 * writes_aux__prev_data__3_2 + 943718400 * a__0_2)) * (943718400 * writes_aux__prev_data__0_2 + 120 * a__1_2 + 30720 * a__2_2 + 7864320 * a__3_2 + 943718399 - (120 * writes_aux__prev_data__1_2 + 30720 * writes_aux__prev_data__2_2 + 7864320 * writes_aux__prev_data__3_2 + 943718400 * a__0_2)) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1
