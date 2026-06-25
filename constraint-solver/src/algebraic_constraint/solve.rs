@@ -104,6 +104,20 @@ where
         Some(subtracted * (-coefficient.field_inverse()))
     }
 
+    /// Like `try_solve_for`, but also handles the case where the constraint is a
+    /// product of two expressions. In this case, the found solution (if any) might
+    /// not be unique.
+    pub fn try_solve_for_not_unique(&self, variable: &V) -> Option<GroupedExpression<T, V>> {
+        if let Some((left, right)) = self.expression.try_as_single_product() {
+            // If either `left` or `right` can be set to 0, the constraint is satisfied.
+            return AlgebraicConstraint::from(left)
+                .try_solve_for(variable)
+                .or_else(|| AlgebraicConstraint::from(right).try_solve_for(variable));
+        }
+
+        self.try_solve_for(variable)
+    }
+
     /// Algebraically transforms the constraint such that `self = 0` is equivalent
     /// to `expr = result` and returns `result`.
     ///
@@ -594,6 +608,17 @@ mod tests {
             "6148914689804861440 * w + 6148914689804861440 * x - 6148914689804861442"
         );
         assert!(constr.try_solve_for(&"t").is_none());
+    }
+
+    #[test]
+    fn solve_for_not_unique() {
+        let expr = var("b") * (constant(1) - var("b"));
+        let constr = AlgebraicConstraint::assert_zero(&expr);
+        assert_eq!(
+            constr.try_solve_for_not_unique(&"b").unwrap().to_string(),
+            "0"
+        );
+        assert!(constr.try_solve_for_not_unique(&"t").is_none());
     }
 
     #[test]
