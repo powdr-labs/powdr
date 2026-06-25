@@ -19,6 +19,7 @@ use openvm_sdk_config::TranspilerConfig;
 use openvm_stark_backend::{p3_field::PrimeField32, Val};
 use openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2CpuEngine;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::DropHint;
 use powdr_riscv_elf::debug_info::SymbolTable;
 
 use crate::powdr_extension::trace_generator::cpu::SharedPeripheryChipsCpu;
@@ -117,4 +118,19 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
 
     /// Given an original program, return the pcs which correspond to jump destinations
     fn get_jump_destinations(original_program: &OriginalCompiledProgram<Self>) -> BTreeSet<u64>;
+
+    /// Per-instruction liveness hints, indexed by instruction index: the entry
+    /// at index `i` applies to the instruction whose program counter is
+    /// `base_pc + i * pc_step` (for RISC-V, `pc_step == 4`, so the index is
+    /// `(pc - base_pc) / 4`). Translating an OpenVM PC into this index is the
+    /// caller's responsibility. Each instruction may carry several hints.
+    /// 
+    /// The Vec of hints for each instruction must be sorted and deduplicated.
+    /// 
+    /// Defaults to no hints.
+    fn get_drop_hints<'a>(
+        _original_program: &'a OriginalCompiledProgram<'_, Self>,
+    ) -> &'a [Vec<DropHint>] {
+        &[]
+    }
 }
