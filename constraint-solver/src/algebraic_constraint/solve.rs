@@ -614,6 +614,10 @@ mod tests {
     fn solve_for_not_unique() {
         let expr = var("b") * (constant(1) - var("b"));
         let constr = AlgebraicConstraint::assert_zero(&expr);
+        assert!(
+            constr.try_solve_for(&"b").is_none(),
+            "Constraint does not have a unique solution"
+        );
         assert_eq!(
             constr.try_solve_for_not_unique(&"b").unwrap().to_string(),
             "0"
