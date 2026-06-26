@@ -8,7 +8,7 @@ use crate::{
     blocks::{Instruction, SuperBlock},
     expression::AlgebraicExpression,
     powdr,
-    symbolic_machine::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine},
+    symbolic_machine::{MemoryDrop, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine},
     Apc, BusMap, BusType, ColumnAllocator, InstructionHandler,
 };
 
@@ -57,6 +57,24 @@ pub fn convert_machine_field_type<T, U>(
                 DerivedVariable::new(derived_variable.variable, method)
             })
             .collect(),
+        memory_drops: machine
+            .memory_drops
+            .into_iter()
+            .map(|drop| convert_memory_drop(drop, convert_field_element))
+            .collect(),
+    }
+}
+
+/// Converts the field type of a memory drop hint.
+fn convert_memory_drop<T, U>(
+    drop: MemoryDrop<T>,
+    convert_field_element: &impl Fn(T) -> U,
+) -> MemoryDrop<U> {
+    MemoryDrop {
+        kind: drop.kind,
+        address_space: convert_expression(drop.address_space, convert_field_element),
+        address: convert_expression(drop.address, convert_field_element),
+        timestamp: convert_expression(drop.timestamp, convert_field_element),
     }
 }
 

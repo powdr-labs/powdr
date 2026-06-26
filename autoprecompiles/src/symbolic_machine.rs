@@ -6,7 +6,7 @@ use crate::expression_conversion::{
 use crate::powdr::UniqueReferences;
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
-    self, AlgebraicConstraint, BusInteraction, ConstraintSystem, DerivedVariable,
+    self, AlgebraicConstraint, BusInteraction, ConstraintSystem, DerivedVariable, Hint,
 };
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_expression::AlgebraicUnaryOperator;
@@ -111,6 +111,64 @@ pub enum BusInteractionKind {
     Receive,
 }
 
+/// The kind of a [`MemoryDrop`]. Encoded as the opaque `u32` `kind` tag of a
+/// [`powdr_constraint_solver::constraint_system::Hint`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u32)]
+pub enum MemoryDropKind {
+    /// The single memory slot at `address` is dead.
+    MemorySlotDrop = 0,
+    /// Every memory slot at `addr >= address` is dead.
+    MemorySlotDropFrom = 1,
+}
+
+impl TryFrom<u32> for MemoryDropKind {
+    /// The unrecognized tag value.
+    type Error = u32;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(MemoryDropKind::MemorySlotDrop),
+            1 => Ok(MemoryDropKind::MemorySlotDropFrom),
+            other => Err(other),
+        }
+    }
+}
+
+/// A liveness hint embedded in a [`SymbolicMachine`], marking a memory slot (or
+/// a range of slots, see [`MemoryDropKind`]) that becomes dead so that the
+/// corresponding memory operations can later be elided.
+///
+/// The argument expressions `address_space`, `address` and `timestamp` are kept
+/// normalized along with the rest of the machine (they reference the machine's
+/// columns) and are encoded as the args of an opaque
+/// [`powdr_constraint_solver::constraint_system::Hint`] when the machine is
+/// turned into a `ConstraintSystem`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryDrop<T> {
+    pub kind: MemoryDropKind,
+    pub address_space: AlgebraicExpression<T>,
+    pub address: AlgebraicExpression<T>,
+    pub timestamp: AlgebraicExpression<T>,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for MemoryDrop<T> {
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new([&self.address_space, &self.address, &self.timestamp].into_iter())
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(
+            [
+                &mut self.address_space,
+                &mut self.address,
+                &mut self.timestamp,
+            ]
+            .into_iter(),
+        )
+    }
+}
+
 /// A machine comprised of algebraic constraints, bus interactions and potentially derived columns.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicMachine<T> {
@@ -121,6 +179,13 @@ pub struct SymbolicMachine<T> {
     /// Columns that have been newly created during the optimization process with a method
     /// to compute their values from other columns.
     pub derived_columns: Vec<DerivedVariable<T, AlgebraicReference, AlgebraicExpression<T>>>,
+    /// Liveness hints whose argument expressions are kept normalized along with
+    /// the machine and encoded as opaque hints in the `ConstraintSystem`.
+    /// Defaults to empty so machines serialized before this field was added
+    /// still deserialize. `Vec::new` is used instead of `Default::default` to
+    /// avoid requiring `T: Default`.
+    #[serde(default = "Vec::new")]
+    pub memory_drops: Vec<MemoryDrop<T>>,
 }
 
 type ComputationMethod<T> =
@@ -135,6 +200,7 @@ impl<T> SymbolicMachine<T> {
         self.constraints.extend(other.constraints);
         self.bus_interactions.extend(other.bus_interactions);
         self.derived_columns.extend(other.derived_columns);
+        self.memory_drops.extend(other.memory_drops);
         self
     }
 }
@@ -204,7 +270,8 @@ impl<T> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
             self.constraints
                 .iter()
                 .flat_map(|c| c.children())
-                .chain(self.bus_interactions.iter().flat_map(|i| i.children())),
+                .chain(self.bus_interactions.iter().flat_map(|i| i.children()))
+                .chain(self.memory_drops.iter().flat_map(|d| d.children())),
         )
     }
 
@@ -217,7 +284,8 @@ impl<T> Children<AlgebraicExpression<T>> for SymbolicMachine<T> {
                     self.bus_interactions
                         .iter_mut()
                         .flat_map(|i| i.children_mut()),
-                ),
+                )
+                .chain(self.memory_drops.iter_mut().flat_map(|d| d.children_mut())),
         )
     }
 }
@@ -256,9 +324,26 @@ pub fn symbolic_machine_to_constraint_system<P: FieldElement>(
                 DerivedVariable::new(derived_variable.variable.clone(), method)
             })
             .collect(),
-        // Hints are populated later in the pipeline, not at conversion time.
-        hints: Vec::new(),
+        hints: symbolic_machine
+            .memory_drops
+            .iter()
+            .map(memory_drop_to_hint)
+            .collect(),
     }
+}
+
+/// Encodes a [`MemoryDrop`] as an opaque [`Hint`]: the variant becomes the
+/// `kind` tag and the `(address_space, address, timestamp)` expressions become
+/// the args, in that order.
+fn memory_drop_to_hint<P: FieldElement>(
+    drop: &MemoryDrop<P>,
+) -> Hint<GroupedExpression<P, AlgebraicReference>> {
+    Hint::new(
+        drop.kind as u32,
+        drop.children()
+            .map(algebraic_to_grouped_expression)
+            .collect(),
+    )
 }
 
 pub fn constraint_system_to_symbolic_machine<P: FieldElement>(
@@ -293,6 +378,33 @@ pub fn constraint_system_to_symbolic_machine<P: FieldElement>(
                 DerivedVariable::new(derived_var.variable, method)
             })
             .collect(),
+        memory_drops: constraint_system
+            .hints
+            .into_iter()
+            .map(hint_to_memory_drop)
+            .collect(),
+    }
+}
+
+/// Decodes an opaque [`Hint`] back into a [`MemoryDrop`], inverting
+/// [`memory_drop_to_hint`].
+fn hint_to_memory_drop<P: FieldElement>(
+    hint: Hint<GroupedExpression<P, AlgebraicReference>>,
+) -> MemoryDrop<P> {
+    let kind = MemoryDropKind::try_from(hint.kind)
+        .unwrap_or_else(|k| panic!("Unknown memory drop kind: {k}"));
+    let [address_space, address, timestamp] =
+        hint.args.try_into().unwrap_or_else(|args: Vec<_>| {
+            panic!(
+                "Memory drop hint must have exactly 3 args, got {}",
+                args.len()
+            )
+        });
+    MemoryDrop {
+        kind,
+        address_space: grouped_expression_to_algebraic(address_space),
+        address: grouped_expression_to_algebraic(address),
+        timestamp: grouped_expression_to_algebraic(timestamp),
     }
 }
 
