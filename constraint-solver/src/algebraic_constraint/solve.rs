@@ -111,11 +111,11 @@ where
         if let Some((left, right)) = self.expression.try_as_single_product() {
             // If either `left` or `right` can be set to 0, the constraint is satisfied.
             return AlgebraicConstraint::from(left)
-                .try_solve_for(variable)
-                .or_else(|| AlgebraicConstraint::from(right).try_solve_for(variable));
+                .try_find_some_solution(variable)
+                .or_else(|| AlgebraicConstraint::from(right).try_find_some_solution(variable));
         }
 
-        self.try_find_some_solution(variable)
+        self.try_solve_for(variable)
     }
 
     /// Algebraically transforms the constraint such that `self = 0` is equivalent
@@ -612,6 +612,20 @@ mod tests {
 
     #[test]
     fn try_find_some_solution() {
+        // Case 1: There is a unique solution for `a` (a = 5)
+        let expr = var("a") - constant(5);
+        let constr = AlgebraicConstraint::assert_zero(&expr);
+        assert_eq!(
+            constr.try_solve_for(&"a").unwrap().to_string(),
+            "5"
+        );
+        assert_eq!(
+            constr.try_find_some_solution(&"a").unwrap().to_string(),
+            "5"
+        );
+        assert!(constr.try_find_some_solution(&"t").is_none());
+
+        // Case 1: There are two solutions for `b` (b = 0 or b = 1)
         let expr = var("b") * (constant(1) - var("b"));
         let constr = AlgebraicConstraint::assert_zero(&expr);
         assert!(
