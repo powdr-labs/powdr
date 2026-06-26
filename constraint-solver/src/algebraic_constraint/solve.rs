@@ -104,6 +104,20 @@ where
         Some(subtracted * (-coefficient.field_inverse()))
     }
 
+    /// Like `try_solve_for`, but also handles the case where the constraint is a
+    /// product of two expressions. In this case, the found solution (if any) might
+    /// not be unique.
+    pub fn try_find_some_solution(&self, variable: &V) -> Option<GroupedExpression<T, V>> {
+        if let Some((left, right)) = self.expression.try_as_single_product() {
+            // If either `left` or `right` can be set to 0, the constraint is satisfied.
+            return AlgebraicConstraint::from(left)
+                .try_find_some_solution(variable)
+                .or_else(|| AlgebraicConstraint::from(right).try_find_some_solution(variable));
+        }
+
+        self.try_solve_for(variable)
+    }
+
     /// Algebraically transforms the constraint such that `self = 0` is equivalent
     /// to `expr = result` and returns `result`.
     ///
@@ -594,6 +608,32 @@ mod tests {
             "6148914689804861440 * w + 6148914689804861440 * x - 6148914689804861442"
         );
         assert!(constr.try_solve_for(&"t").is_none());
+    }
+
+    #[test]
+    fn try_find_some_solution() {
+        // Case 1: There is a unique solution for `a` (a = 5)
+        let expr = var("a") - constant(5);
+        let constr = AlgebraicConstraint::assert_zero(&expr);
+        assert_eq!(constr.try_solve_for(&"a").unwrap().to_string(), "5");
+        assert_eq!(
+            constr.try_find_some_solution(&"a").unwrap().to_string(),
+            "5"
+        );
+        assert!(constr.try_find_some_solution(&"t").is_none());
+
+        // Case 1: There are two solutions for `b` (b = 0 or b = 1)
+        let expr = var("b") * (constant(1) - var("b"));
+        let constr = AlgebraicConstraint::assert_zero(&expr);
+        assert!(
+            constr.try_solve_for(&"b").is_none(),
+            "Constraint does not have a unique solution"
+        );
+        assert_eq!(
+            constr.try_find_some_solution(&"b").unwrap().to_string(),
+            "0"
+        );
+        assert!(constr.try_find_some_solution(&"t").is_none());
     }
 
     #[test]
