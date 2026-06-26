@@ -611,7 +611,7 @@ mod tests {
     }
 
     #[test]
-    fn solve_for_not_unique() {
+    fn try_find_some_solution() {
         let expr = var("b") * (constant(1) - var("b"));
         let constr = AlgebraicConstraint::assert_zero(&expr);
         assert!(
