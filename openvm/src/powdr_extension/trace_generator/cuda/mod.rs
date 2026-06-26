@@ -133,7 +133,7 @@ fn compile_derived_to_gpu(
                 emit_expr(&mut bytecode, e1, apc_poly_id_to_index, apc_height);
                 bytecode.push(OpCode::Mul as u32);
             }
-            ComputationMethod::IfEqZero(_, _, _) => todo!(),
+            ComputationMethod::IfEqZero(_, _, _) => unreachable!("IfEqZero not expected for new columns"),
         }
         let len = (bytecode.len() as u32) - off;
         specs.push(DerivedExprSpec {
