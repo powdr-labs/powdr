@@ -256,6 +256,8 @@ pub fn symbolic_machine_to_constraint_system<P: FieldElement>(
                 DerivedVariable::new(derived_variable.variable.clone(), method)
             })
             .collect(),
+        // Hints are populated later in the pipeline, not at conversion time.
+        hints: Vec::new(),
     }
 }
 

@@ -11,8 +11,10 @@ use crate::{
 /// Splits the constraint system into independent subsets.
 /// Each variable occurs in exactly one subset and all constraints referencing a
 /// certain variable have to be in the same subsystem.
-/// Note that the list of derived variables in the returned set is empty,
-/// but derived variables do occur in the constraints.
+/// Note that the lists of derived variables and hints in the returned sets are
+/// empty. Derived variables still occur in the constraints, but hints are
+/// dropped entirely and are not recoverable: do not route a hint-carrying
+/// system through this splitter if the hints must be preserved.
 pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
     constraint_system: IndexedConstraintSystem<T, V>,
 ) -> Vec<ConstraintSystem<T, V>> {
@@ -47,6 +49,7 @@ pub fn split_system<T: RuntimeConstant, V: Clone + Ord + Hash + Display>(
             algebraic_constraints,
             bus_interactions,
             derived_variables: Vec::new(),
+            hints: Vec::new(),
         });
         // Fine to iterate over a hash set here since the order in which we remove
         // is not relevant.
