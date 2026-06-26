@@ -474,9 +474,9 @@ crepe! {
     // EqualZeroCheck(constrs, result, vars, diff_markers, diff_vals) =>
     //   constrsexprs can be equivalently replaced by a constraint that models
     //   result = 1 if all vars are zero, and result = 0 otherwise.
-    //   diff_markers and diff_vars are variables where we add hints because they might be removed.
-    struct EqualZeroCheck([Expr; 10], Var, [Var; 4], [Var; 4], [Var; 4]);
-    EqualZeroCheck(constrs, result, vars, diff_markers, diff_vals) <-
+    //   diff_markers and diff_var are variables where we add hints because they might be removed.
+    struct EqualZeroCheck([Expr; 10], Var, [Var; 4], [Var; 4], Var);
+    EqualZeroCheck(constrs, result, vars, diff_markers, diff_val) <-
       // (1 - diff_marker__3_0) * (a__3_0 * (2 * cmp_result_0 - 1)) = 0
       NegatedDiffMarkerConstraint(constr_0, diff_marker_3, _, a_3, result, 0),
       // (1 - (diff_marker__2_0 + diff_marker__3_0)) * (a__2_0 * (2 * cmp_result_0 - 1)) = 0
@@ -519,12 +519,11 @@ crepe! {
       AffinelyRelated(diff_marker_sum, T::from(-1), one_minus_diff_marker_sum, T::from(1)),
       let constrs = [constr_0, constr_1, constr_2, constr_3, constr_4, constr_5, constr_6, constr_7, constr_8, constr_9],
       let vars = [a_0, a_1, a_2, a_3],
-      let diff_markers = [diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3],
-      let diff_vals = [diff_val, diff_val, diff_val, diff_val];
+      let diff_markers = [diff_marker_0, diff_marker_1, diff_marker_2, diff_marker_3];
 
     ReplaceAlgebraicConstraintsBy(extend_by_none(constrs), extend_by_none(replacement)) <-
       Env(env),
-      EqualZeroCheck(constrs, result, vars, diff_markers, diff_vals),
+      EqualZeroCheck(constrs, result, vars, diff_markers, diff_val),
       let replacement = {
         let result = GroupedExpression::from_unknown_variable(result);
         assert!(vars.len() == 4);
@@ -533,7 +532,7 @@ crepe! {
         let sum_inv_var = GroupedExpression::from_unknown_variable(
           env.new_var("inv_of_sum", ComputationMethod::QuotientOrZero(One::one(), sum_of_vars.clone()))
         );
-        // Hints for diff_markers and diff_vals:
+        // Hints for diff_markers and diff_val:
         // diff_markers: 1 at the most significant index i such that a[i] != 0, otherwise 0. If such
         // an i exists, diff_val = c[i] - b[i] if c[i] > b[i] or b[i] - c[i] else.
         // diff_marker_3 = if_eq_zero(a_3, 0, 1)
@@ -543,7 +542,7 @@ crepe! {
         // diff_val_3 = a_3
         // diff_val_2 = a_2
         // diff_val_1 = a_1
-        // diff_val_0 = if_eq_zero(a_0, 1, a_0 - 1)
+        // diff_val_0 = if_eq_zero(a_0, 1, a_0 - 1) // this is "our" diff_val.
         let zero = Box::new(ComputationMethod::Constant(Zero::zero()));
         let one = Box::new(ComputationMethod::Constant(One::one()));
         env.add_hint(
@@ -580,16 +579,7 @@ crepe! {
               zero.clone())),
             zero.clone()));
         env.add_hint(
-          diff_vals[3],
-          ComputationMethod::QuotientOrZero(vars[3].clone(), One::one()));
-        env.add_hint(
-          diff_vals[2],
-          ComputationMethod::QuotientOrZero(vars[2].clone(), One::one()));
-        env.add_hint(
-          diff_vals[1],
-          ComputationMethod::QuotientOrZero(vars[1].clone(), One::one()));
-        env.add_hint(
-          diff_vals[0],
+          diff_val,
           ComputationMethod::IfEqZero(
             vars[0].clone(),
             Box::new(ComputationMethod::Constant(One::one())),
