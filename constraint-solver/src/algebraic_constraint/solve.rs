@@ -615,10 +615,7 @@ mod tests {
         // Case 1: There is a unique solution for `a` (a = 5)
         let expr = var("a") - constant(5);
         let constr = AlgebraicConstraint::assert_zero(&expr);
-        assert_eq!(
-            constr.try_solve_for(&"a").unwrap().to_string(),
-            "5"
-        );
+        assert_eq!(constr.try_solve_for(&"a").unwrap().to_string(), "5");
         assert_eq!(
             constr.try_find_some_solution(&"a").unwrap().to_string(),
             "5"
