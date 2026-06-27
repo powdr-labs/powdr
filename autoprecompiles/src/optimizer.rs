@@ -14,7 +14,7 @@ use powdr_number::FieldElement;
 use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
 use crate::export::ExportOptions;
-use crate::memory_optimizer::MemoryBusInteraction;
+use crate::memory_optimizer::{drop_internal_memory_accesses, MemoryBusInteraction};
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::symbolic_machine::{
     constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
@@ -109,6 +109,18 @@ where
             break;
         }
     }
+
+    // Drop fully-internal memory accesses flagged by liveness hints. Runs once,
+    // after the pairing loop has reduced each live slot to a boundary pair; the
+    // disconnected-column removal below prunes the orphaned read columns.
+    let constraint_system: IndexedConstraintSystem<_, _> =
+        drop_internal_memory_accesses::<_, _, MemoryBus>(
+            constraint_system.into(),
+            bus_map.get_bus_id(&BusType::Memory),
+        )
+        .into();
+    stats_logger.log("dropping internal memory accesses", &constraint_system);
+
     let (constraint_system, substitutions) = inliner::replace_constrained_witness_columns(
         constraint_system,
         inline_everything_below_degree_bound(degree_bound),
