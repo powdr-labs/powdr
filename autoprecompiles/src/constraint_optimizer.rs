@@ -296,8 +296,8 @@ fn try_replace_by_number<T: FieldElement, V: Clone + Ord + Hash + Display>(
 ///
 /// For each removed variable, we also emit a hint (a "derived variable" with `is_new = false`)
 /// describing how it could have been assigned in the original circuit, to aid formal
-/// verification. We only emit a hint if the variable can be computed from variables that
-/// are kept.
+/// verification. The hint might reference other removed variables, which have their own hints.
+/// We panic if we cannot compute a hint for a removed variable.
 fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
@@ -309,82 +309,72 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         .cloned()
         .collect::<HashSet<_>>();
 
+    // Maps each variable to delete to a hint of how it could have been assigned in the original
+    // circuit. The hint is computed using the solver's range constraints, so this is done before
+    // `solver.retain_variables` below.
     let variables_to_delete = all_variables
         .iter()
-        // Find variables that are referenced in exactly one constraint
-        .filter_map(|variable| {
-            constraint_system
-                .constraints_referencing_variables(once(variable))
-                .exactly_one()
-                .ok()
-                .map(|constraint| (variable.clone(), constraint))
-        })
-        .filter(|(variable, constraint)| match constraint {
-            // Remove the algebraic constraint if we can solve for the variable.
-            ConstraintRef::AlgebraicConstraint(constr) => {
-                constr.try_find_some_solution(variable).is_some()
-            }
-            ConstraintRef::BusInteraction(bus_interaction) => {
-                let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
-                // Only stateless bus interactions can be removed.
-                let is_stateless = !bus_interaction_handler.is_stateful(bus_id);
-                // TODO: This is overly strict.
-                // We assume that the bus interaction is satisfiable. Given that it is, there
-                // will be at least one assignment of the payload fields that satisfies it.
-                // If the prover has the freedom to choose each payload field, it can always find
-                // a satisfying assignment.
-                // This could be generalized to multiple unknown fields, but it would be more complicated,
-                // because *each* field would need a *different* free variable.
-                let has_one_unknown_field = bus_interaction
-                    .payload
-                    .iter()
-                    .filter(|field| field.try_to_number().is_none())
-                    .count()
-                    == 1;
-                // If the expression is linear in the free variable, the prover would be able to solve for it
-                // to satisfy the constraint. Otherwise, this is not necessarily the case.
-                // Note that if the above check is true, there will only be one field of degree > 0.
-                let all_degrees_at_most_one = bus_interaction
-                    .payload
-                    .iter()
-                    .all(|field| field.degree_of_variable(variable) <= 1);
-                is_stateless && has_one_unknown_field && all_degrees_at_most_one
-            }
-        })
-        .map(|(variable, _constraint)| variable.clone())
-        .collect::<HashSet<_>>();
-
-    let variables_to_keep = all_variables
-        .difference(&variables_to_delete)
-        .cloned()
-        .collect::<HashSet<_>>();
-
-    // For each removed variable, try to emit a hint of how it could have been assigned in the
-    // original circuit. This is done before `solver.retain_variables`, so that the solver still
-    // knows the range constraints of the removed variables.
-    let mut hints = variables_to_delete
-        .iter()
+        // Find variables that are referenced in exactly one constraint.
         .filter_map(|variable| {
             let constraint = constraint_system
                 .constraints_referencing_variables(once(variable))
                 .exactly_one()
                 .ok()?;
-            let computation_method = computation_method_for_free_variable(
-                variable,
-                constraint,
-                &*solver,
-                &bus_interaction_handler,
-            )?;
-            // We can only use the hint if it is expressed in terms of variables that are kept.
-            let references_only_kept_variables = computation_method
-                .referenced_unknown_variables()
-                .all(|var| variables_to_keep.contains(var));
-            references_only_kept_variables
-                .then(|| DerivedVariable::new(false, variable.clone(), computation_method))
+            let value = match constraint {
+                // Remove the algebraic constraint if we can solve for the variable.
+                ConstraintRef::AlgebraicConstraint(constr) => {
+                    constr.try_find_some_solution(variable)?
+                }
+                ConstraintRef::BusInteraction(bus_interaction) => {
+                    let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
+                    // Only stateless bus interactions can be removed.
+                    let is_stateless = !bus_interaction_handler.is_stateful(bus_id);
+                    // TODO: This is overly strict.
+                    // We assume that the bus interaction is satisfiable. Given that it is, there
+                    // will be at least one assignment of the payload fields that satisfies it.
+                    // If the prover has the freedom to choose each payload field, it can always find
+                    // a satisfying assignment.
+                    // This could be generalized to multiple unknown fields, but it would be more complicated,
+                    // because *each* field would need a *different* free variable.
+                    let has_one_unknown_field = bus_interaction
+                        .payload
+                        .iter()
+                        .filter(|field| field.try_to_number().is_none())
+                        .count()
+                        == 1;
+                    // If the expression is linear in the free variable, the prover would be able to solve for it
+                    // to satisfy the constraint. Otherwise, this is not necessarily the case.
+                    // Note that if the above check is true, there will only be one field of degree > 0.
+                    let all_degrees_at_most_one = bus_interaction
+                        .payload
+                        .iter()
+                        .all(|field| field.degree_of_variable(variable) <= 1);
+                    if !(is_stateless && has_one_unknown_field && all_degrees_at_most_one) {
+                        return None;
+                    }
+                    // We remove the variable, so we must be able to compute a hint for it.
+                    free_variable_value_in_bus_interaction(
+                        variable,
+                        bus_interaction,
+                        &*solver,
+                        &bus_interaction_handler,
+                    )
+                    .unwrap_or_else(|| {
+                        panic!("Could not compute a hint for removed free variable {variable} in bus interaction {bus_interaction}")
+                    })
+                }
+            };
+            // A `ComputationMethod` cannot directly represent a plain expression, but `value / 1` works.
+            let hint = ComputationMethod::QuotientOrZero(value, GroupedExpression::one());
+            Some((variable.clone(), hint))
         })
-        .collect::<Vec<_>>();
-    // `variables_to_delete` is a `HashSet`, so we sort to make the output deterministic.
-    hints.sort_by(|a, b| a.variable.cmp(&b.variable));
+        .collect::<HashMap<_, _>>();
+
+    let variables_to_keep = all_variables
+        .iter()
+        .filter(|variable| !variables_to_delete.contains_key(*variable))
+        .cloned()
+        .collect::<HashSet<_>>();
 
     solver.retain_variables(&variables_to_keep);
 
@@ -402,79 +392,55 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                 .all(|var| variables_to_keep.contains(var))
     });
 
+    // Emit the hints as derived variables, sorted to make the output deterministic.
+    let mut hints = variables_to_delete
+        .into_iter()
+        .map(|(variable, hint)| DerivedVariable::new(false, variable, hint))
+        .collect::<Vec<_>>();
+    hints.sort_by(|a, b| a.variable.cmp(&b.variable));
     constraint_system.add_derived_variables(hints);
 
     constraint_system
-}
-
-/// For a free variable (i.e. a variable referenced in exactly one `constraint`), returns a hint
-/// of how it could have been assigned in the original circuit, if one can be found.
-/// Returns `None` if no hint could be derived.
-fn computation_method_for_free_variable<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
-    variable: &V,
-    constraint: ConstraintRef<T, V>,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
-    bus_interaction_handler: &impl BusInteractionHandler<T>,
-) -> Option<ComputationMethod<T, GroupedExpression<T, V>>> {
-    let solution = match constraint {
-        // If the variable only appears in an algebraic constraint, we can record any solution.
-        ConstraintRef::AlgebraicConstraint(constr) => constr.try_find_some_solution(variable)?,
-        // If the variable only appears in a (stateless) bus interaction, we find a concrete value
-        // for the field it appears in that satisfies the bus interaction and then solve for the
-        // variable. We require the variable to appear in a single field and all other fields to be
-        // constant, so that the bus interaction uniquely determines whether a value for that field
-        // is valid (independent of the multiplicity and the other fields).
-        ConstraintRef::BusInteraction(bus_interaction) => {
-            let mut variable_field = None;
-            for (index, field) in bus_interaction.fields().enumerate() {
-                if field.referenced_unknown_variables().contains(variable) {
-                    // The variable must appear in a single field.
-                    if variable_field.replace((index, field)).is_some() {
-                        return None;
-                    }
-                } else if field.try_to_number().is_none() {
-                    // Some other field is not constant.
-                    return None;
-                }
-            }
-            let (field_index, field) = variable_field?;
-            let field_value = satisfying_field_value(
-                bus_interaction,
-                field_index,
-                range_constraints,
-                bus_interaction_handler,
-            )?;
-            AlgebraicConstraint::assert_eq(
-                field.clone(),
-                GroupedExpression::from_number(field_value),
-            )
-            .as_ref()
-            .try_solve_for(variable)?
-        }
-    };
-    // A `ComputationMethod` cannot directly represent a plain expression, but dividing by one works.
-    Some(ComputationMethod::QuotientOrZero(
-        solution,
-        GroupedExpression::one(),
-    ))
 }
 
 /// The maximum number of candidate values we try when looking for a value of a bus interaction
 /// field that satisfies the bus interaction.
 const MAX_BUS_FIELD_CANDIDATES: u64 = 1 << 20;
 
-/// Tries to find a concrete value for the field at `field_index` of `bus_interaction` such that
-/// the bus interaction is satisfied, assuming all other fields are constant.
-/// Returns `None` if no such value could be found (e.g. because the field can take too many
-/// values to enumerate).
-fn satisfying_field_value<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+/// For a free `variable` that occurs in a stateless `bus_interaction`, returns an expression of
+/// how to compute it such that the bus interaction is satisfied: we find a concrete value for the
+/// field the variable occurs in and solve for the variable.
+///
+/// We require the variable to occur in a single field and all fields but the multiplicity to be
+/// constant, so that the bus interaction uniquely determines whether a value for that field is
+/// valid. Returns `None` if no such value could be found (e.g. because the field can take too
+/// many values to enumerate).
+fn free_variable_value_in_bus_interaction<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    variable: &V,
     bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
-    field_index: usize,
     range_constraints: &impl RangeConstraintProvider<T, V>,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
-) -> Option<T> {
-    let field_range_constraints = bus_interaction.to_range_constraints(range_constraints);
-    // Restrict the values of the field using the bus interaction handler.
+) -> Option<GroupedExpression<T, V>> {
+    // `fields()` yields the bus id, the multiplicity and then the payload fields. The variable
+    // must occur in a single field, and all fields but the multiplicity must be constant.
+    const MULTIPLICITY_INDEX: usize = 1;
+    let mut variable_field = None;
+    for (index, field) in bus_interaction.fields().enumerate() {
+        if field.referenced_unknown_variables().contains(variable) {
+            if variable_field.replace((index, field)).is_some() {
+                return None;
+            }
+        } else if index != MULTIPLICITY_INDEX && field.try_to_number().is_none() {
+            return None;
+        }
+    }
+    let (field_index, field) = variable_field?;
+
+    // Find a concrete value for the field that satisfies the bus interaction. We pin the
+    // multiplicity to a non-zero value so that the bus interaction handler validates the payload:
+    // a value that is valid while the bus is active is also fine while it is inactive.
+    let mut field_range_constraints = bus_interaction.to_range_constraints(range_constraints);
+    field_range_constraints.multiplicity = RangeConstraint::from_value(T::one());
     let candidate_values = *bus_interaction_handler
         .handle_bus_interaction(field_range_constraints.clone())
         .fields()
@@ -484,16 +450,20 @@ fn satisfying_field_value<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>
     if candidate_values.size_estimate().try_into_u64()? > MAX_BUS_FIELD_CANDIDATES {
         return None;
     }
-    let value = candidate_values.allowed_values().find(|value| {
-        // Set the field to the candidate value and check that the bus interaction is still satisfiable.
+    let field_value = candidate_values.allowed_values().find(|value| {
+        // Set the field to the candidate value and check that the bus interaction is satisfiable.
         let mut bus_interaction = field_range_constraints.clone();
         *bus_interaction.fields_mut().nth(field_index).unwrap() =
             RangeConstraint::from_value(*value);
         bus_interaction_handler
             .handle_bus_interaction_checked(bus_interaction)
             .is_ok()
-    });
-    value
+    })?;
+
+    // Solve `field = field_value` for the variable.
+    AlgebraicConstraint::assert_eq(field.clone(), GroupedExpression::from_number(field_value))
+        .as_ref()
+        .try_solve_for(variable)
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
