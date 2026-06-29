@@ -425,10 +425,9 @@ fn free_variable_value_in_bus_interaction<T: FieldElement, V: Clone + Ord + Eq +
     // a value that is valid while the bus is active is also fine while it is inactive.
     let mut range_constraints = bus_interaction.to_range_constraints(range_constraints);
     range_constraints.multiplicity = RangeConstraint::from_value(T::one());
-    let candidate_values = bus_interaction_handler
+    let field_value = bus_interaction_handler
         .handle_bus_interaction(range_constraints.clone())
-        .payload[payload_index];
-    let field_value = candidate_values
+        .payload[payload_index]
         .allowed_values()
         .find(|value| {
             // Set the field to the candidate value and check that the bus interaction is satisfiable.
