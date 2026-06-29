@@ -589,5 +589,7 @@ which is crucial for memory optimization to solve the aliasing problem.
 
 #### Equal Zero Check
 
+<!-- markdown-link-check-disable -->
 [1]: https://eprint.iacr.org/2023/778.pdf
+<!-- markdown-link-check-enable -->
 [2]: https://github.com/powdr-labs/powdr/issues/3542

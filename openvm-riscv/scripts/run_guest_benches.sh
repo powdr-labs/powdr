@@ -49,6 +49,7 @@ run_bench() {
     # shared candidates_dir, written on the first cache-miss run for this
     # (guest, profile-input) pair.
     if [ "${apcs:-0}" -ne 0 ]; then
+        cp "${candidates_dir}"/apc_candidates.json "${run_name}"/apc_candidates.json
         python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${candidates_dir}"/apc_candidates.json --output "${run_name}"/effectiveness.png
     fi
 
