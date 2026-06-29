@@ -21,7 +21,7 @@ use powdr_constraint_solver::{
     solver::{exhaustive_search, Solver},
     utils::get_all_possible_assignments,
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::{FieldElement};
 use serde::Serialize;
 
 use crate::{
@@ -336,12 +336,13 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                     // a satisfying assignment.
                     // This could be generalized to multiple unknown fields, but it would be more complicated,
                     // because *each* field would need a *different* free variable.
-                    let has_one_unknown_field = bus_interaction
+                    let only_unknown_payload_index = bus_interaction
                         .payload
                         .iter()
-                        .filter(|field| field.try_to_number().is_none())
-                        .count()
-                        == 1;
+                        .enumerate()
+                        .exactly_one()
+                        .ok()
+                        .map(|(index, _)| index);
                     // If the expression is linear in the free variable, the prover would be able to solve for it
                     // to satisfy the constraint. Otherwise, this is not necessarily the case.
                     // Note that if the above check is true, there will only be one field of degree > 0.
@@ -349,19 +350,20 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                         .payload
                         .iter()
                         .all(|field| field.degree_of_variable(variable) <= 1);
-                    if !(is_stateless && has_one_unknown_field && all_degrees_at_most_one) {
+                    if !(is_stateless
+                        && only_unknown_payload_index.is_some()
+                        && all_degrees_at_most_one)
+                    {
                         return None;
                     }
                     // We remove the variable, so we must be able to compute a hint for it.
                     free_variable_value_in_bus_interaction(
                         variable,
+                        only_unknown_payload_index.unwrap(),
                         bus_interaction,
                         &*solver,
                         &bus_interaction_handler,
                     )
-                    .unwrap_or_else(|| {
-                        panic!("Could not compute a hint for removed free variable {variable} in bus interaction {bus_interaction}")
-                    })
                 }
             };
             // A `ComputationMethod` cannot directly represent a plain expression, but `value / 1` works.
@@ -403,67 +405,47 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     constraint_system
 }
 
-/// The maximum number of candidate values we try when looking for a value of a bus interaction
-/// field that satisfies the bus interaction.
-const MAX_BUS_FIELD_CANDIDATES: u64 = 1 << 20;
-
 /// For a free `variable` that occurs in a stateless `bus_interaction`, returns an expression of
 /// how to compute it such that the bus interaction is satisfied: we find a concrete value for the
 /// field the variable occurs in and solve for the variable.
 ///
 /// We require the variable to occur in a single field and all fields but the multiplicity to be
 /// constant, so that the bus interaction uniquely determines whether a value for that field is
-/// valid. Returns `None` if no such value could be found (e.g. because the field can take too
-/// many values to enumerate).
+/// valid. Panics if no such value can be found.
 fn free_variable_value_in_bus_interaction<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     variable: &V,
+    payload_index: usize,
     bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
-) -> Option<GroupedExpression<T, V>> {
-    // `fields()` yields the bus id, the multiplicity and then the payload fields. The variable
-    // must occur in a single field, and all fields but the multiplicity must be constant.
-    const MULTIPLICITY_INDEX: usize = 1;
-    let mut variable_field = None;
-    for (index, field) in bus_interaction.fields().enumerate() {
-        if field.referenced_unknown_variables().contains(variable) {
-            if variable_field.replace((index, field)).is_some() {
-                return None;
-            }
-        } else if index != MULTIPLICITY_INDEX && field.try_to_number().is_none() {
-            return None;
-        }
-    }
-    let (field_index, field) = variable_field?;
+) -> GroupedExpression<T, V> {
+    let payload_expr = &bus_interaction.payload[payload_index];
 
-    // Find a concrete value for the field that satisfies the bus interaction. We pin the
-    // multiplicity to a non-zero value so that the bus interaction handler validates the payload:
+    // Find a concrete value for the payload field that satisfies the bus interaction. We pin the
+    // multiplicity to 1 so that the bus interaction handler validates the payload:
     // a value that is valid while the bus is active is also fine while it is inactive.
-    let mut field_range_constraints = bus_interaction.to_range_constraints(range_constraints);
-    field_range_constraints.multiplicity = RangeConstraint::from_value(T::one());
-    let candidate_values = *bus_interaction_handler
-        .handle_bus_interaction(field_range_constraints.clone())
-        .fields()
-        .nth(field_index)
-        .unwrap();
-    // Avoid enumerating very large (or unbounded) ranges.
-    if candidate_values.size_estimate().try_into_u64()? > MAX_BUS_FIELD_CANDIDATES {
-        return None;
-    }
-    let field_value = candidate_values.allowed_values().find(|value| {
-        // Set the field to the candidate value and check that the bus interaction is satisfiable.
-        let mut bus_interaction = field_range_constraints.clone();
-        *bus_interaction.fields_mut().nth(field_index).unwrap() =
-            RangeConstraint::from_value(*value);
-        bus_interaction_handler
-            .handle_bus_interaction_checked(bus_interaction)
-            .is_ok()
-    })?;
+    let mut range_constraints = bus_interaction.to_range_constraints(range_constraints);
+    range_constraints.multiplicity = RangeConstraint::from_value(T::one());
+    let candidate_values = bus_interaction_handler
+        .handle_bus_interaction(range_constraints.clone())
+        .payload[payload_index];
+    let field_value = candidate_values
+        .allowed_values()
+        .find(|value| {
+            // Set the field to the candidate value and check that the bus interaction is satisfiable.
+            let mut bus_interaction = range_constraints.clone();
+            bus_interaction.payload[payload_index] = RangeConstraint::from_value(*value);
+            bus_interaction_handler
+                .handle_bus_interaction_checked(bus_interaction)
+                .is_ok()
+        })
+        .expect("No valid candidate value found for bus field");
 
     // Solve `field = field_value` for the variable.
-    AlgebraicConstraint::assert_eq(field.clone(), GroupedExpression::from_number(field_value))
+    AlgebraicConstraint::assert_eq(payload_expr.clone(), GroupedExpression::from_number(field_value))
         .as_ref()
         .try_solve_for(variable)
+        .expect("Failed to solve for variable")
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
