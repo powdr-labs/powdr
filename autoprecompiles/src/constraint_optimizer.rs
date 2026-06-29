@@ -340,6 +340,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                         .payload
                         .iter()
                         .enumerate()
+                        .filter(|(_, field)| field.try_to_number().is_none())
                         .exactly_one()
                         .ok()
                         .map(|(index, _)| index);
