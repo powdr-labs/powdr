@@ -21,7 +21,7 @@ use powdr_constraint_solver::{
     solver::{exhaustive_search, Solver},
     utils::get_all_possible_assignments,
 };
-use powdr_number::{FieldElement};
+use powdr_number::FieldElement;
 use serde::Serialize;
 
 use crate::{
@@ -367,7 +367,9 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                 }
             };
             // A `ComputationMethod` cannot directly represent a plain expression, but `value / 1` works.
-            let hint = ComputationMethod::QuotientOrZero(value, GroupedExpression::one());
+            let hint_computation =
+                ComputationMethod::QuotientOrZero(value, GroupedExpression::one());
+            let hint = DerivedVariable::new(false, variable.clone(), hint_computation);
             Some((variable.clone(), hint))
         })
         .collect::<HashMap<_, _>>();
@@ -395,10 +397,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     });
 
     // Emit the hints as derived variables, sorted to make the output deterministic.
-    let mut hints = variables_to_delete
-        .into_iter()
-        .map(|(variable, hint)| DerivedVariable::new(false, variable, hint))
-        .collect::<Vec<_>>();
+    let mut hints = variables_to_delete.into_values().collect::<Vec<_>>();
     hints.sort_by(|a, b| a.variable.cmp(&b.variable));
     constraint_system.add_derived_variables(hints);
 
@@ -442,10 +441,13 @@ fn free_variable_value_in_bus_interaction<T: FieldElement, V: Clone + Ord + Eq +
         .expect("No valid candidate value found for bus field");
 
     // Solve `field = field_value` for the variable.
-    AlgebraicConstraint::assert_eq(payload_expr.clone(), GroupedExpression::from_number(field_value))
-        .as_ref()
-        .try_solve_for(variable)
-        .expect("Failed to solve for variable")
+    AlgebraicConstraint::assert_eq(
+        payload_expr.clone(),
+        GroupedExpression::from_number(field_value),
+    )
+    .as_ref()
+    .try_solve_for(variable)
+    .expect("Failed to solve for variable")
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
