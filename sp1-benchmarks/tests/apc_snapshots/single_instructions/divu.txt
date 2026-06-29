@@ -383,4 +383,7 @@ rem_msb__msb_0 * (rem_msb__msb_0 - 1) = 0
 is_valid * (is_valid - 1) = 0
 
 // Derived columns:
+c_times_quotient_lower__product_msb__msb_0 (old) = QuotientOrZero(0, 1)
+c_times_quotient_upper__product_msb__msb_0 (old) = QuotientOrZero(0, 1)
+quot_msb__msb_0 (old) = QuotientOrZero(0, 1)
 is_valid (new) = 1

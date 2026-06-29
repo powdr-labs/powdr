@@ -47,4 +47,7 @@ mult=is_valid, args=[a__0_0, 0, 0, 0]
 is_valid * (is_valid - 1) = 0
 
 // Derived columns:
+bit_shift_carry__0_0 (old) = QuotientOrZero(0, 1)
+bit_shift_carry__1_0 (old) = QuotientOrZero(0, 1)
+bit_shift_carry__2_0 (old) = QuotientOrZero(0, 1)
 is_valid (new) = 1

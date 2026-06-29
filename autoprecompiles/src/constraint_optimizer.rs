@@ -6,20 +6,22 @@ use std::{
 };
 
 use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use powdr_constraint_solver::{
     constraint_system::{
-        AlgebraicConstraint, BusInteractionHandler, ConstraintRef, ConstraintSystem,
+        AlgebraicConstraint, BusInteraction, BusInteractionHandler, ComputationMethod,
+        ConstraintRef, ConstraintSystem, DerivedVariable,
     },
     grouped_expression::{GroupedExpression, RangeConstraintProvider},
     indexed_constraint_system::IndexedConstraintSystem,
     inliner::DegreeBound,
+    range_constraint::RangeConstraint,
     reachability::reachable_variables,
     rule_based_optimizer::rule_based_optimization,
     solver::{exhaustive_search, Solver},
     utils::get_all_possible_assignments,
 };
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 use serde::Serialize;
 
 use crate::{
@@ -291,10 +293,15 @@ fn try_replace_by_number<T: FieldElement, V: Clone + Ord + Hash + Display>(
 /// The same would be true for a *stateless* bus interaction, e.g. `[foo * bar] in [BYTES]`.
 ///
 /// This function removes *some* constraints like this (see TODOs below).
+///
+/// For each removed variable, we also emit a hint (a "derived variable" with `is_new = false`)
+/// describing how it could have been assigned in the original circuit, to aid formal
+/// verification. We only emit a hint if the variable can be computed from variables that
+/// are kept.
 fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
     mut constraint_system: IndexedConstraintSystem<T, V>,
     solver: &mut impl Solver<T, V>,
-    bus_interaction_handler: impl IsBusStateful<T> + Clone,
+    bus_interaction_handler: impl IsBusStateful<T> + BusInteractionHandler<T> + Clone,
 ) -> IndexedConstraintSystem<T, V> {
     let all_variables = constraint_system
         .system()
@@ -352,6 +359,33 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
         .cloned()
         .collect::<HashSet<_>>();
 
+    // For each removed variable, try to emit a hint of how it could have been assigned in the
+    // original circuit. This is done before `solver.retain_variables`, so that the solver still
+    // knows the range constraints of the removed variables.
+    let mut hints = variables_to_delete
+        .iter()
+        .filter_map(|variable| {
+            let constraint = constraint_system
+                .constraints_referencing_variables(once(variable))
+                .exactly_one()
+                .ok()?;
+            let computation_method = computation_method_for_free_variable(
+                variable,
+                constraint,
+                &*solver,
+                &bus_interaction_handler,
+            )?;
+            // We can only use the hint if it is expressed in terms of variables that are kept.
+            let references_only_kept_variables = computation_method
+                .referenced_unknown_variables()
+                .all(|var| variables_to_keep.contains(var));
+            references_only_kept_variables
+                .then(|| DerivedVariable::new(false, variable.clone(), computation_method))
+        })
+        .collect::<Vec<_>>();
+    // `variables_to_delete` is a `HashSet`, so we sort to make the output deterministic.
+    hints.sort_by(|a, b| a.variable.cmp(&b.variable));
+
     solver.retain_variables(&variables_to_keep);
 
     constraint_system.retain_algebraic_constraints(|constraint| {
@@ -368,7 +402,98 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                 .all(|var| variables_to_keep.contains(var))
     });
 
+    constraint_system.add_derived_variables(hints);
+
     constraint_system
+}
+
+/// For a free variable (i.e. a variable referenced in exactly one `constraint`), returns a hint
+/// of how it could have been assigned in the original circuit, if one can be found.
+/// Returns `None` if no hint could be derived.
+fn computation_method_for_free_variable<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    variable: &V,
+    constraint: ConstraintRef<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+    bus_interaction_handler: &impl BusInteractionHandler<T>,
+) -> Option<ComputationMethod<T, GroupedExpression<T, V>>> {
+    let solution = match constraint {
+        // If the variable only appears in an algebraic constraint, we can record any solution.
+        ConstraintRef::AlgebraicConstraint(constr) => constr.try_find_some_solution(variable)?,
+        // If the variable only appears in a (stateless) bus interaction, we find a concrete value
+        // for the field it appears in that satisfies the bus interaction and then solve for the
+        // variable. We require the variable to appear in a single field and all other fields to be
+        // constant, so that the bus interaction uniquely determines whether a value for that field
+        // is valid (independent of the multiplicity and the other fields).
+        ConstraintRef::BusInteraction(bus_interaction) => {
+            let mut variable_field = None;
+            for (index, field) in bus_interaction.fields().enumerate() {
+                if field.referenced_unknown_variables().contains(variable) {
+                    // The variable must appear in a single field.
+                    if variable_field.replace((index, field)).is_some() {
+                        return None;
+                    }
+                } else if field.try_to_number().is_none() {
+                    // Some other field is not constant.
+                    return None;
+                }
+            }
+            let (field_index, field) = variable_field?;
+            let field_value = satisfying_field_value(
+                bus_interaction,
+                field_index,
+                range_constraints,
+                bus_interaction_handler,
+            )?;
+            AlgebraicConstraint::assert_eq(
+                field.clone(),
+                GroupedExpression::from_number(field_value),
+            )
+            .as_ref()
+            .try_solve_for(variable)?
+        }
+    };
+    // A `ComputationMethod` cannot directly represent a plain expression, but dividing by one works.
+    Some(ComputationMethod::QuotientOrZero(
+        solution,
+        GroupedExpression::one(),
+    ))
+}
+
+/// The maximum number of candidate values we try when looking for a value of a bus interaction
+/// field that satisfies the bus interaction.
+const MAX_BUS_FIELD_CANDIDATES: u64 = 1 << 20;
+
+/// Tries to find a concrete value for the field at `field_index` of `bus_interaction` such that
+/// the bus interaction is satisfied, assuming all other fields are constant.
+/// Returns `None` if no such value could be found (e.g. because the field can take too many
+/// values to enumerate).
+fn satisfying_field_value<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
+    bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
+    field_index: usize,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+    bus_interaction_handler: &impl BusInteractionHandler<T>,
+) -> Option<T> {
+    let field_range_constraints = bus_interaction.to_range_constraints(range_constraints);
+    // Restrict the values of the field using the bus interaction handler.
+    let candidate_values = *bus_interaction_handler
+        .handle_bus_interaction(field_range_constraints.clone())
+        .fields()
+        .nth(field_index)
+        .unwrap();
+    // Avoid enumerating very large (or unbounded) ranges.
+    if candidate_values.size_estimate().try_into_u64()? > MAX_BUS_FIELD_CANDIDATES {
+        return None;
+    }
+    let value = candidate_values.allowed_values().find(|value| {
+        // Set the field to the candidate value and check that the bus interaction is still satisfiable.
+        let mut bus_interaction = field_range_constraints.clone();
+        *bus_interaction.fields_mut().nth(field_index).unwrap() =
+            RangeConstraint::from_value(*value);
+        bus_interaction_handler
+            .handle_bus_interaction_checked(bus_interaction)
+            .is_ok()
+    });
+    value
 }
 
 /// Removes any columns that are not connected to *stateful* bus interactions (e.g. memory),
@@ -766,6 +891,84 @@ mod tests {
             (Y) * (Y - 2) = 0
             (Z) * (Z + 1) = 0
             4 * Y - 8 * Z - 8 = 0"#]]
+        .assert_eq(&out.to_string())
+    }
+
+    const BYTE_BUS_ID: u64 = 1;
+    const MEMORY_BUS_ID: u64 = 2;
+
+    /// A bus interaction handler for tests with two buses:
+    /// - A stateless "byte" bus (id 1) that constrains its first payload field to a byte.
+    /// - A stateful "memory" bus (id 2).
+    #[derive(Clone)]
+    struct TestBusHandler;
+
+    impl BusInteractionHandler<GoldilocksField> for TestBusHandler {
+        fn handle_bus_interaction(
+            &self,
+            mut bus_interaction: BusInteraction<RangeConstraint<GoldilocksField>>,
+        ) -> BusInteraction<RangeConstraint<GoldilocksField>> {
+            if bus_interaction.bus_id.try_to_single_value()
+                == Some(GoldilocksField::from(BYTE_BUS_ID))
+            {
+                bus_interaction.payload[0] = RangeConstraint::from_mask(0xffu64);
+            }
+            bus_interaction
+        }
+    }
+
+    impl IsBusStateful<GoldilocksField> for TestBusHandler {
+        fn is_stateful(&self, bus_id: GoldilocksField) -> bool {
+            bus_id == GoldilocksField::from(MEMORY_BUS_ID)
+        }
+    }
+
+    fn bus_interaction(
+        bus_id: u64,
+        payload: Vec<GroupedExpression<GoldilocksField, &'static str>>,
+    ) -> BusInteraction<GroupedExpression<GoldilocksField, &'static str>> {
+        BusInteraction {
+            bus_id: constant(bus_id),
+            multiplicity: constant(1),
+            payload,
+        }
+    }
+
+    #[test]
+    fn remove_free_variable_in_algebraic_constraint_emits_hint() {
+        // `foo` only appears in the first constraint, so it can be removed and we record
+        // `foo = bar` as a hint. `bar` appears in both constraints, so it is kept.
+        let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem::default()
+            .with_constraints(vec![
+                var("foo") - var("bar"),
+                var("bar") * var("bar") - var("bar"),
+            ])
+            .into();
+        let mut solver = new_solver(constraint_system.system().clone(), TestBusHandler);
+        let out = remove_free_variables(constraint_system, &mut solver, TestBusHandler);
+        expect![[r#"
+            (bar) * (bar) - bar = 0
+            foo (old) := QuotientOrZero(bar, 1)"#]]
+        .assert_eq(&out.to_string())
+    }
+
+    #[test]
+    fn remove_free_variable_in_bus_interaction_emits_hint() {
+        // `w` only appears in the (stateless) byte bus interaction, so both `w` and the bus
+        // interaction can be removed. We record a value for `w` such that the byte bus
+        // interaction is satisfied. `v` also appears in the (stateful) memory bus interaction,
+        // so it is kept.
+        let constraint_system: IndexedConstraintSystem<_, _> = ConstraintSystem::default()
+            .with_bus_interactions(vec![
+                bus_interaction(BYTE_BUS_ID, vec![var("v") + var("w")]),
+                bus_interaction(MEMORY_BUS_ID, vec![var("v")]),
+            ])
+            .into();
+        let mut solver = new_solver(constraint_system.system().clone(), TestBusHandler);
+        let out = remove_free_variables(constraint_system, &mut solver, TestBusHandler);
+        expect![[r#"
+            BusInteraction { bus_id: 2, multiplicity: 1, payload: v }
+            w (old) := QuotientOrZero(-(v), 1)"#]]
         .assert_eq(&out.to_string())
     }
 }
