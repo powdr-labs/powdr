@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782817527394,
+  "lastUpdate": 1782862987448,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416069,6 +416069,34 @@ window.BENCHMARK_DATA = {
             "name": "optimize-keccak/optimize",
             "value": 26176883151,
             "range": "± 1393304063",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "9638f096c4de469c6a0074e8f91dea2985bdc35f",
+          "message": "Refactor free variable removal (#3773)\n\nA small refactor in preparation of a PR I'm planning on top of #3761:\nWhenever we remove a variable, we should emit a hint of how that\nvariable could have been assigned in the original circuit (to aid FV).\nWith this PR, at least the algebraic constraint case should be trivial.\n\n---------\n\nCo-authored-by: chriseth <chriseth.github@gmail.com>",
+          "timestamp": "2026-06-26T12:01:33Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/9638f096c4de469c6a0074e8f91dea2985bdc35f"
+        },
+        "date": 1782862978471,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 24191580960,
+            "range": "± 2207445752",
             "unit": "ns/iter"
           }
         ]
