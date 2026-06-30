@@ -61,8 +61,8 @@ jobs:
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
-          # Prove with 100 APCs. Block 24171377 has ~17M gas.
-          /usr/bin/time -v ./run.sh --apc 100  --mode prove-stark --block 24171377 || exit 1
+          # Prove with 100 APCs. Block 24171384 has ~5M gas.
+          /usr/bin/time -v ./run.sh --apc 100  --mode prove-stark --block 24171384 || exit 1
           echo "Finished proving with 100 APCs"
 
       - name: Save revisions and run info
