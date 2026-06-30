@@ -7,6 +7,7 @@ use crate::{
 };
 use derivative::Derivative;
 use itertools::Itertools;
+use num_traits::One;
 use powdr_number::FieldElement;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt::Display, hash::Hash};
@@ -163,6 +164,13 @@ impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
                 write!(f, "IfEqZero({e}, {then_method}, {else_method})")
             }
         }
+    }
+}
+
+impl<T: RuntimeConstant + One, F: Clone + Ord + Eq> ComputationMethod<T, GroupedExpression<T, F>> {
+    /// Creates a computation method that computes the variable as the value of the given expression.
+    pub fn expression(e: GroupedExpression<T, F>) -> Self {
+        ComputationMethod::QuotientOrZero(e, GroupedExpression::one())
     }
 }
 

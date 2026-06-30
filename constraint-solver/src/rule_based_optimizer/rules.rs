@@ -542,7 +542,16 @@ crepe! {
         // diff_val_3 = a_3
         // diff_val_2 = a_2
         // diff_val_1 = a_1
-        // diff_val_0 = if_eq_zero(a_0, 1, a_0 - 1) // this is "our" diff_val.
+        // diff_val_0 =
+        //    if_eq_zero(a_3,
+        //      if_eq_zero(a_2,
+        //        if_eq_zero(a_1,
+        //          if_eq_zero(a_0,
+        //            1,
+        //            a_0 - 1),
+        //          a_1),
+        //        a_2),
+        //      a_3)
         let zero = Box::new(ComputationMethod::Constant(Zero::zero()));
         let one = Box::new(ComputationMethod::Constant(One::one()));
         env.add_hint(
@@ -581,11 +590,18 @@ crepe! {
         env.add_hint(
           diff_val,
           ComputationMethod::IfEqZero(
-            vars[0].clone(),
-            Box::new(ComputationMethod::Constant(One::one())),
-            Box::new(ComputationMethod::QuotientOrZero(vars[0].clone() - One::one(), One::one()))));
-
-
+            vars[3].clone(),
+            Box::new(ComputationMethod::IfEqZero(
+              vars[2].clone(),
+              Box::new(ComputationMethod::IfEqZero(
+                vars[1].clone(),
+                Box::new(ComputationMethod::IfEqZero(
+                  vars[0].clone(),
+                  one.clone(),
+                  Box::new(ComputationMethod::expression(vars[0].clone() - One::one())))),
+                Box::new(ComputationMethod::expression(vars[1].clone())))),
+              Box::new(ComputationMethod::expression(vars[2].clone())))),
+            Box::new(ComputationMethod::expression(vars[3].clone()))));
         [
           env.insert_owned(result.clone() * sum_of_vars.clone()),
           env.insert_owned(result + sum_inv_var * sum_of_vars - One::one()),
