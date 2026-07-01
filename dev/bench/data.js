@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782862987448,
+  "lastUpdate": 1782949480473,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416097,6 +416097,34 @@ window.BENCHMARK_DATA = {
             "name": "optimize-keccak/optimize",
             "value": 24191580960,
             "range": "± 2207445752",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "d42b42caa2568e3479ca45ba40a3a0a9b944ad9b",
+          "message": "ci: Use smaller Eth block to cut CI runtime (#3778)\n\nChanging the block proven in CI from\n[23992138](https://etherscan.io/block/24171377) (16.9M Gas) to\n[24171384](https://etherscan.io/block/24171384) (5.4M Gas)\n\nDoes not touch nightly-tests.yml; nightly continues to measure block\n24171377.\n\nReduces the runtime of the `test_apc_reth_app_proof` job from 72min to\n26min.\n\n---------\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-01T12:22:18Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/d42b42caa2568e3479ca45ba40a3a0a9b944ad9b"
+        },
+        "date": 1782949470997,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 21305748400,
+            "range": "± 1663166554",
             "unit": "ns/iter"
           }
         ]
