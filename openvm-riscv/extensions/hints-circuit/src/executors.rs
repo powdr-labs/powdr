@@ -1,4 +1,4 @@
-use openvm_circuit::arch::{PhantomSubExecutor, Streams};
+use openvm_circuit::arch::{PhantomSubExecutor, Streams, EXTRA_EXEC_REGS};
 use openvm_circuit::system::memory::online::GuestMemory;
 use openvm_instructions::riscv::RV32_MEMORY_AS;
 use openvm_instructions::PhantomDiscriminant;
@@ -18,7 +18,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for ReverseBytesSubEx {
         memory: &GuestMemory,
         streams: &mut Streams<F>,
         _: &mut StdRng,
-        _fp: u32,
+        _extra_regs: [u32; EXTRA_EXEC_REGS],
         _: PhantomDiscriminant,
         a: u32,
         _: u32,
@@ -59,7 +59,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseFieldSubEx {
         memory: &GuestMemory,
         streams: &mut Streams<F>,
         _: &mut StdRng,
-        _fp: u32,
+        _extra_regs: [u32; EXTRA_EXEC_REGS],
         _: PhantomDiscriminant,
         a: u32,
         _: u32,
@@ -105,7 +105,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256InverseField10x26SubEx {
         memory: &GuestMemory,
         streams: &mut Streams<F>,
         _: &mut StdRng,
-        _fp: u32,
+        _extra_regs: [u32; EXTRA_EXEC_REGS],
         _: PhantomDiscriminant,
         a: u32,
         _: u32,
@@ -153,7 +153,7 @@ impl<F: PrimeField32> PhantomSubExecutor<F> for K256SqrtField10x26SubEx {
         memory: &GuestMemory,
         streams: &mut Streams<F>,
         _: &mut StdRng,
-        _fp: u32,
+        _extra_regs: [u32; EXTRA_EXEC_REGS],
         _: PhantomDiscriminant,
         a: u32,
         _: u32,

@@ -465,7 +465,7 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
         let VmStateMut {
             pc,
-            fp,
+            extra_regs,
             memory,
             streams,
             rng,
@@ -504,7 +504,7 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
 
             let state = VmStateMut {
                 pc,
-                fp,
+                extra_regs,
                 memory,
                 streams,
                 rng,
@@ -539,7 +539,7 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExec
         // Extract the state components, since `execute` consumes the state but we need to pass it to each instruction execution
         let VmStateMut {
             pc,
-            fp,
+            extra_regs,
             memory,
             streams,
             rng,
@@ -578,7 +578,7 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExec
 
             let state = VmStateMut {
                 pc,
-                fp,
+                extra_regs,
                 memory,
                 streams,
                 rng,
