@@ -369,6 +369,18 @@ impl<T: RuntimeConstant, V: Ord + Clone + Eq> GroupedExpression<T, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Eq> GroupedExpression<T, V> {
+    /// Evaluates the expression given the variable assignment provided by `value_of`.
+    pub fn evaluate_assignment(&self, value_of: &mut impl FnMut(&V) -> T) -> T {
+        let mut result = self.constant;
+        for (l, r) in &self.quadratic {
+            result += l.evaluate_assignment(value_of) * r.evaluate_assignment(value_of);
+        }
+        for (var, coeff) in &self.linear {
+            result += *coeff * value_of(var);
+        }
+        result
+    }
+
     pub fn substitute_simple(&mut self, variable: &V, substitution: T) {
         if self.linear.contains_key(variable) {
             let coeff = self.linear.remove(variable).unwrap();
