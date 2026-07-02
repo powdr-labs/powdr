@@ -21,10 +21,12 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::adapter::{
     Adapter, AdapterApc, AdapterApcWithStats, ApcWithStats, PgoAdapter,
 };
-use powdr_autoprecompiles::blocks::{Instruction, PcStep};
+use powdr_autoprecompiles::blocks::{Instruction, PcStep, SuperBlock};
+use powdr_autoprecompiles::bus_map::{BusMap, BusType};
 use powdr_autoprecompiles::empirical_constraints::EmpiricalConstraints;
 use powdr_autoprecompiles::execution::ExecutionState;
 use powdr_autoprecompiles::pgo::{ApcCandidate, CellPgo, InstructionPgo, NonePgo, PgoData};
+use powdr_autoprecompiles::symbolic_machine::{MemoryDrop, SymbolicMachine};
 use powdr_autoprecompiles::DegreeBound;
 use powdr_autoprecompiles::VmConfig;
 use powdr_autoprecompiles::{GenerateConfig, SelectConfig};
@@ -134,6 +136,48 @@ impl<'a, ISA: OpenVmISA> Adapter for BabyBearOpenVmApcAdapter<'a, ISA> {
 
     fn is_branching(instruction: &Self::Instruction) -> bool {
         ISA::branching_opcodes().contains(&instruction.inner.opcode)
+    }
+
+    fn lower_memory_drops(
+        instruction_handler: &Self::InstructionHandler,
+        block: &SuperBlock<Self::Instruction>,
+        machines: &[SymbolicMachine<Self::PowdrField>],
+        bus_map: &BusMap<Self::CustomBusTypes>,
+    ) -> Vec<MemoryDrop<Self::PowdrField>> {
+        let Some(config) = ISA::drop_hint_config() else {
+            return Vec::new();
+        };
+        let (Some(memory_bus_id), Some(execution_bridge_bus_id)) = (
+            bus_map.get_bus_id(&BusType::Memory),
+            bus_map.get_bus_id(&BusType::ExecutionBridge),
+        ) else {
+            return Vec::new();
+        };
+        // Pair each instruction's hints (keyed by PC) with the context extracted
+        // from its machine; the introspection lives entirely in `drop_hint_lowering`.
+        let per_instruction = block
+            .instructions()
+            .zip(machines)
+            .map(|((pc, _instr), machine)| {
+                let hints = instruction_handler
+                    .drop_hints
+                    .get(&pc)
+                    .cloned()
+                    .unwrap_or_default();
+                let context = crate::drop_hint_lowering::instruction_drop_context(
+                    machine,
+                    &config,
+                    memory_bus_id,
+                    execution_bridge_bus_id,
+                );
+                (hints, context)
+            })
+            .collect::<Vec<_>>();
+        crate::drop_hint_lowering::lower_memory_drops(
+            &per_instruction,
+            BabyBearField::from(config.register_address_space as u64),
+            config.stride,
+        )
     }
 }
 
@@ -261,7 +305,16 @@ fn generate_apcs_with_adapter<
     empirical_constraints: EmpiricalConstraints,
 ) -> Vec<AdapterApcWithStats<BabyBearOpenVmApcAdapter<'a, ISA>>> {
     let original_config = &original_program.vm_config;
-    let airs = original_config.airs(generate.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    let mut airs = original_config.airs(generate.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+    // Key the ISA's per-instruction liveness hints by program counter (empty for
+    // ISAs that don't emit them); consumed later by `lower_memory_drops`.
+    let base_pc = original_program.exe.program.pc_base as u64;
+    airs.drop_hints = ISA::get_drop_hints(original_program)
+        .iter()
+        .enumerate()
+        .filter(|(_, hints)| !hints.is_empty())
+        .map(|(i, hints)| (base_pc + i as u64 * DEFAULT_PC_STEP as u64, hints.clone()))
+        .collect();
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {

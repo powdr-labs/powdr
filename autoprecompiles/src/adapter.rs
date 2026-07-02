@@ -7,10 +7,12 @@ use powdr_number::FieldElement;
 use serde::{Deserialize, Serialize};
 
 use crate::blocks::{detect_superblocks, ExecutionBlocks, SuperBlock};
+use crate::bus_map::BusMap;
 use crate::empirical_constraints::EmpiricalConstraints;
 use crate::evaluation::EvaluationResult;
 use crate::execution::{ExecutionState, OptimisticConstraint, OptimisticConstraints};
 use crate::execution_profile::ExecutionProfile;
+use crate::symbolic_machine::{MemoryDrop, SymbolicMachine};
 use crate::{
     blocks::{BasicBlock, Instruction, Program},
     constraint_optimizer::IsBusStateful,
@@ -161,6 +163,26 @@ where
     fn is_branching(instr: &Self::Instruction) -> bool;
 
     fn is_allowed(instr: &Self::Instruction) -> bool;
+
+    /// Produces the memory-drop liveness hints for `block`, given the
+    /// per-instruction symbolic machines (already globalized and index-aligned
+    /// with `block.instructions()`). The returned drops reference those
+    /// machines' columns and are attached to the assembled block machine, then
+    /// consumed by [`crate::memory_optimizer::drop_internal_memory_accesses`].
+    ///
+    /// The entire lowering of an ISA's abstract liveness hints into concrete
+    /// memory-slot drops lives behind this single hook, so the lowering can use
+    /// whatever ISA-specific knowledge it needs (frame model, register space,
+    /// which AIR column holds the frame pointer, ...) without leaking any of it
+    /// into the generic pipeline. Defaults to no drops.
+    fn lower_memory_drops(
+        _instruction_handler: &Self::InstructionHandler,
+        _block: &SuperBlock<Self::Instruction>,
+        _machines: &[SymbolicMachine<Self::PowdrField>],
+        _bus_map: &BusMap<Self::CustomBusTypes>,
+    ) -> Vec<MemoryDrop<Self::PowdrField>> {
+        Vec::new()
+    }
 }
 
 pub type AdapterApcWithStats<A> = ApcWithStats<

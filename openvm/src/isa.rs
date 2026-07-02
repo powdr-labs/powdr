@@ -22,6 +22,8 @@ use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_autoprecompiles::DropHint;
 use powdr_riscv_elf::debug_info::SymbolTable;
 
+use crate::drop_hint_lowering::DropHintConfig;
+
 use crate::powdr_extension::trace_generator::cpu::SharedPeripheryChipsCpu;
 #[cfg(feature = "cuda")]
 use crate::powdr_extension::trace_generator::SharedPeripheryChipsGpu;
@@ -124,13 +126,19 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     /// `base_pc + i * pc_step` (for RISC-V, `pc_step == 4`, so the index is
     /// `(pc - base_pc) / 4`). Translating an OpenVM PC into this index is the
     /// caller's responsibility. Each instruction may carry several hints.
-    /// 
-    /// The Vec of hints for each instruction must be sorted and deduplicated.
-    /// 
+    ///
     /// Defaults to no hints.
     fn get_drop_hints<'a>(
         _original_program: &'a OriginalCompiledProgram<'_, Self>,
     ) -> &'a [Vec<DropHint>] {
         &[]
+    }
+
+    /// ISA-level configuration for lowering drop hints into memory drops, or
+    /// `None` if this ISA does not emit liveness hints (then no lowering runs).
+    /// This is pure ISA data; all machine introspection happens in
+    /// [`crate::drop_hint_lowering`].
+    fn drop_hint_config() -> Option<DropHintConfig> {
+        None
     }
 }

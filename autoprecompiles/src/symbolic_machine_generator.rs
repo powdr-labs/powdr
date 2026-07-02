@@ -140,10 +140,14 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
     let (machines, column_allocator) =
         statements_to_symbolic_machines::<A>(block, instruction_handler, bus_map);
-    let machine = machines
+    // Lower the ISA's liveness hints into memory drops against the per-instruction
+    // (globalized) machines, before they are concatenated into a single machine.
+    let memory_drops = A::lower_memory_drops(instruction_handler, block, &machines, bus_map);
+    let mut machine = machines
         .into_iter()
         .reduce(SymbolicMachine::concatenate)
         .unwrap();
+    machine.memory_drops.extend(memory_drops);
     (machine, column_allocator)
 }
 

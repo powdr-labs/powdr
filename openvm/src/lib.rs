@@ -116,6 +116,9 @@ pub fn format_fe<F: PrimeField32>(v: F) -> String {
 /// We do not use the transpiler, instead we customize an already transpiled program
 pub mod customize_exe;
 
+/// Lowering of ISA liveness hints into memory-slot drops.
+pub mod drop_hint_lowering;
+
 pub use customize_exe::{BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
 
 // A module for our extension
