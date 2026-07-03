@@ -415,3 +415,137 @@ fn derive_new_range_constraints<T: FieldElement, V: Clone + Hash + Ord + Eq + Di
             Ok(map)
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use powdr_number::GoldilocksField;
+
+    use crate::algebraic_constraint::AlgebraicConstraint;
+    use crate::bus_interaction_handler::DefaultBusInteractionHandler;
+
+    use super::*;
+
+    type Qse = GroupedExpression<GoldilocksField, &'static str>;
+
+    fn var(name: &'static str) -> Qse {
+        Qse::from_unknown_variable(name)
+    }
+
+    fn constant(value: u64) -> Qse {
+        Qse::from_number(GoldilocksField::from(value))
+    }
+
+    fn range(min: u64, max: u64) -> RangeConstraint<GoldilocksField> {
+        RangeConstraint::from_range(min.into(), max.into())
+    }
+
+    fn format_result(result: &Result<Vec<Effect<GoldilocksField, &'static str>>, ()>) -> String {
+        match result {
+            Err(()) => "<contradiction>".to_string(),
+            Ok(effects) => effects
+                .iter()
+                .map(|effect| match effect {
+                    Effect::Assignment(v, value) => format!("{v} = {value}"),
+                    Effect::RangeConstraint(v, rc) => format!("{v}: {rc}"),
+                    _ => "<other effect>".to_string(),
+                })
+                .join(", "),
+        }
+    }
+
+    /// Asserts that, for every possible assignment of `variables`, the
+    /// prepared version of the constraint `expr = 0` derives exactly the
+    /// same effects as substituting the assignment and solving the
+    /// constraint (the `Generic` path).
+    fn assert_parity_with_generic(
+        expr: &Qse,
+        variables: &BTreeSet<&'static str>,
+        range_constraints: &HashMap<&'static str, RangeConstraint<GoldilocksField>>,
+    ) {
+        let prepared = PreparedConstraint::new(
+            ConstraintRef::AlgebraicConstraint(AlgebraicConstraint::assert_zero(expr)),
+            variables,
+            range_constraints,
+        );
+        assert!(
+            !matches!(prepared, PreparedConstraint::Generic(_)),
+            "expected the constraint to be prepared via a fast path"
+        );
+        let generic: PreparedConstraint<GoldilocksField, &'static str> =
+            PreparedConstraint::Generic(ConstraintRef::AlgebraicConstraint(
+                AlgebraicConstraint::assert_zero(expr),
+            ));
+        let bus_interaction_handler = DefaultBusInteractionHandler::default();
+        for assignments in
+            get_all_possible_assignments(variables.iter().cloned(), range_constraints)
+        {
+            let fast = prepared
+                .derive_effects(&assignments, range_constraints, &bus_interaction_handler)
+                .map_err(|_| ());
+            let slow = generic
+                .derive_effects(&assignments, range_constraints, &bus_interaction_handler)
+                .map_err(|_| ());
+            assert!(
+                fast == slow,
+                "prepared constraint diverges from substitute-and-solve for {assignments:?}:\n  prepared: {}\n  solved:   {}",
+                format_result(&fast),
+                format_result(&slow),
+            );
+        }
+    }
+
+    #[test]
+    fn affine_single_remaining_variable() {
+        // Searching over {a, b, c} solves for x. `c` does not occur in the
+        // constraint. Some assignments make the constraint unsatisfiable or
+        // solve x to an out-of-range value, so the contradiction cases are
+        // exercised as well.
+        let expr = var("a") + constant(2) * var("b") + var("x") - constant(5);
+        let variables = BTreeSet::from(["a", "b", "c"]);
+        let range_constraints = HashMap::from([
+            ("a", range(0, 1)),
+            ("b", range(0, 3)),
+            ("c", range(0, 1)),
+            ("x", range(0, 4)),
+        ]);
+        assert_parity_with_generic(&expr, &variables, &range_constraints);
+    }
+
+    #[test]
+    fn affine_multiple_remaining_variables() {
+        // Searching over {a, b} transfers range constraints to x, y and z.
+        let expr = var("a") + var("b") + constant(3) * var("x") + constant(7) * var("y") + var("z")
+            - constant(20);
+        let variables = BTreeSet::from(["a", "b"]);
+        let range_constraints = HashMap::from([
+            ("a", range(0, 1)),
+            ("b", range(0, 3)),
+            ("x", RangeConstraint::from_mask(0x3u32)),
+            ("y", RangeConstraint::from_mask(0x7u32)),
+            ("z", range(0, 10)),
+        ]);
+        assert_parity_with_generic(&expr, &variables, &range_constraints);
+    }
+
+    #[test]
+    fn fully_determined_affine() {
+        // All variables are search variables: the constraint just checks
+        // the assignment (only a + b == 2 is satisfiable).
+        let expr = var("a") + var("b") - constant(2);
+        let variables = BTreeSet::from(["a", "b"]);
+        let range_constraints = HashMap::from([("a", range(0, 1)), ("b", range(0, 3))]);
+        assert_parity_with_generic(&expr, &variables, &range_constraints);
+    }
+
+    #[test]
+    fn fully_determined_quadratic() {
+        // All variables are search variables in a quadratic constraint
+        // (only a * b == 1 is satisfiable).
+        let expr = var("a") * var("b") - constant(1);
+        let variables = BTreeSet::from(["a", "b"]);
+        let range_constraints = HashMap::from([("a", range(0, 1)), ("b", range(0, 3))]);
+        assert_parity_with_generic(&expr, &variables, &range_constraints);
+    }
+}
