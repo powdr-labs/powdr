@@ -222,12 +222,11 @@ impl<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Display> PreparedConstrai
                     .filter(|(v, _)| !variables.contains(v))
                     .map(|(v, coeff)| (v, *coeff))
                     .collect_vec();
+                assert!(!remaining_terms.is_empty());
                 let variable_rcs = remaining_terms
                     .iter()
                     .map(|(v, _)| range_constraints.get(v))
                     .collect_vec();
-                // `remaining_terms` is not empty, because fully determined
-                // constraints are handled above.
                 let remaining_range_constraint = remaining_terms
                     .iter()
                     .zip(&variable_rcs)
