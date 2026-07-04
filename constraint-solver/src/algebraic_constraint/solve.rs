@@ -41,7 +41,7 @@ pub enum Error {
     ConstraintUnsatisfiable(String),
 }
 
-impl<T, V> AlgebraicConstraint<&GroupedExpression<T, V>>
+impl<'a, T, V> AlgebraicConstraint<&'a GroupedExpression<T, V>>
 where
     T: FieldElement,
     V: Ord + Clone + Eq + Hash + Display,
@@ -225,18 +225,52 @@ where
         &self,
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Vec<Effect<T, V>> {
-        // Solve for each of the variables in the linear component and
-        // compute the range constraints.
-        assert!(!self.expression.is_quadratic());
-        self.expression
-            .linear_components()
-            .filter_map(|(var, _)| {
-                let rc = self.try_solve_for(var)?.range_constraint(range_constraints);
-                Some((var, rc))
-            })
-            .filter(|(_, constraint)| !constraint.is_unconstrained())
-            .map(|(var, constraint)| Effect::RangeConstraint(var.clone(), constraint))
+        self.implied_affine_range_constraints(range_constraints)
+            .filter(|(_, _, constraint)| !constraint.is_unconstrained())
+            .map(|(var, _, constraint)| Effect::RangeConstraint(var.clone(), constraint))
             .collect()
+    }
+
+    /// For each variable in the linear component, returns the variable, its
+    /// coefficient and the range constraint of the expression obtained by
+    /// solving `self = 0` for that variable.
+    /// The range constraints are computed directly from the other variables'
+    /// range constraints, without materializing the solved expressions, and
+    /// each variable's range constraint is queried only once.
+    /// Panics if the expression is not affine.
+    pub(crate) fn implied_affine_range_constraints(
+        self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> impl Iterator<Item = (&'a V, &'a T, RangeConstraint<T>)> + 'a {
+        let expression = self.expression;
+        assert!(expression.is_affine());
+        // Query the range constraints of the variables only once.
+        let variable_rcs = expression
+            .linear_components()
+            .map(|(var, _)| range_constraints.get(var))
+            .collect::<Vec<_>>();
+        expression
+            .linear_components()
+            .enumerate()
+            .map(move |(j, (var, coeff))| {
+                // Solving `c_j * x_j + sum_{i != j} c_i * x_i + c = 0` for `x_j`
+                // yields `x_j = -1/c_j * (sum_{i != j} c_i * x_i + c)`.
+                let factor = -coeff.field_inverse();
+                let rc = expression
+                    .linear_components()
+                    .zip(&variable_rcs)
+                    .enumerate()
+                    .filter(|(i, _)| *i != j)
+                    .map(|(_, ((_, i_coeff), var_rc))| {
+                        var_rc.combine_product(&(*i_coeff * factor).range_constraint())
+                    })
+                    .chain(std::iter::once(
+                        (*expression.constant_offset() * factor).range_constraint(),
+                    ))
+                    .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
+                    .unwrap();
+                (var, coeff, rc)
+            })
     }
 
     fn solve_quadratic(
