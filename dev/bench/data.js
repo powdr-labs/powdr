@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783294971767,
+  "lastUpdate": 1783381624179,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416261,6 +416261,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 41072759453,
             "range": "± 138806746",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Leandro Pacheco",
+            "username": "pacheco",
+            "email": "contact@leandropacheco.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5395a66442c82abc3c095d758f170773c4b5857d",
+          "message": "Avoid per-call BigUint allocation in plonky3 field modulus (#3780)\n\n`modulus()` and `is_in_lower_half()` in the plonky3 field wrapper\nobtained the field order via `<$p3_type>::order()`, which allocates a\n`BigUint` on every call. Use the `PrimeField32::ORDER_U32` associated\nconstant instead, which is free.\n\non my machine, this change sped up the wasm apc optimization benchmark\nby 1.560×\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-02T19:17:09Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/5395a66442c82abc3c095d758f170773c4b5857d"
+        },
+        "date": 1783381614648,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 18563603831,
+            "range": "± 1655602721",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 42052889280,
+            "range": "± 523498570",
             "unit": "ns/iter"
           }
         ]
