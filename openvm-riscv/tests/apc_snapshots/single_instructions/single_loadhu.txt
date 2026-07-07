@@ -56,8 +56,8 @@ flags__1_0 * flags__2_0 = 0
 is_valid * (is_valid - 1) = 0
 
 // Derived columns:
-prev_data__2_0 (old) = QuotientOrZero(0, 1)
-prev_data__3_0 (old) = QuotientOrZero(0, 1)
+prev_data__2_0 (old) = 0
+prev_data__3_0 (old) = 0
 write_data__0_0 (old) = QuotientOrZero(flags__1_0 * flags__2_0 * prev_data__0_0 - (1006632960 * flags__1_0 * (flags__1_0 - 1) * read_data__0_0 + (1006632960 * flags__2_0 * (flags__2_0 - 1) + flags__1_0 * (flags__1_0 + flags__2_0 - 2)) * read_data__2_0 + flags__2_0 * (flags__1_0 + flags__2_0 - 2) * read_data__3_0), 1)
 write_data__1_0 (old) = QuotientOrZero(flags__1_0 * flags__2_0 * read_data__0_0 - (1006632960 * flags__1_0 * (flags__1_0 - 1) * read_data__1_0 + 1006632960 * flags__2_0 * (flags__2_0 - 1) * read_data__3_0), 1)
 is_valid (new) = 1
