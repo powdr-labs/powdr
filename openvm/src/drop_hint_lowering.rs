@@ -12,6 +12,7 @@ use powdr_autoprecompiles::{
     expression::AlgebraicExpression,
     symbolic_machine::{MemoryDrop, MemoryDropKind, SymbolicMachine},
 };
+use powdr_expression::AlgebraicBinaryOperator;
 use powdr_number::FieldElement;
 
 /// ISA-level constants needed to lower drop hints. Returned by the ISA; `None`
@@ -93,13 +94,20 @@ pub fn instruction_drop_context<F: FieldElement>(
 }
 
 /// Whether a memory multiplicity is negative — a read (`GetPrevious`); a
-/// positive one is a write (`SetNew`). Robust to the multiplicity being a folded
-/// literal (`-1`) or still scaled by an `is_valid` flag (`-is_valid`): `Minus` is
-/// the only unary operator on `AlgebraicExpression`, so a unary op flips the sign.
+/// positive one is a write (`SetNew`). Handles:
+/// - folded literal: `Number(-1)`
+/// - unary negation: `UnaryOperation(Minus, x)` → `-x`
+/// - OpenVM's `NEG_ONE * direction`: `BinaryOperation(Mul, Number(-1), x)`
 fn multiplicity_is_negative<F: FieldElement>(mult: &AlgebraicExpression<F>) -> bool {
     match mult {
         AlgebraicExpression::Number(n) => !n.is_in_lower_half(),
         AlgebraicExpression::UnaryOperation(op) => !multiplicity_is_negative(op.expr.as_ref()),
+        AlgebraicExpression::BinaryOperation(op) if op.op == AlgebraicBinaryOperator::Mul => {
+            // NEG_ONE * x  or  x * NEG_ONE
+            let left_neg = multiplicity_is_negative(&op.left);
+            let right_neg = multiplicity_is_negative(&op.right);
+            left_neg ^ right_neg
+        }
         _ => false,
     }
 }

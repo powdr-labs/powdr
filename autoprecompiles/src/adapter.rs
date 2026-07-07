@@ -180,9 +180,7 @@ where
         _block: &SuperBlock<Self::Instruction>,
         _machines: &[SymbolicMachine<Self::PowdrField>],
         _bus_map: &BusMap<Self::CustomBusTypes>,
-    ) -> Vec<MemoryDrop<Self::PowdrField>> {
-        Vec::new()
-    }
+    ) -> Vec<MemoryDrop<Self::PowdrField>>;
 }
 
 pub type AdapterApcWithStats<A> = ApcWithStats<
