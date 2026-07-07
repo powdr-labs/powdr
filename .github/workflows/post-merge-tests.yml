@@ -10,7 +10,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-C target-cpu=native"
+  # NOTE: intentionally no `RUSTFLAGS: -C target-cpu=native` here. This job
+  # builds the riscv32 guest via `cargo openvm build`, which inherits ambient
+  # RUSTFLAGS; a host `target-cpu=native` is then rejected by rustc-LLVM with
+  # "RV32 target requires an RV32 CPU". Mirrors the note in nightly-tests.yml.
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 50000
@@ -42,6 +45,14 @@ jobs:
           rustup toolchain install 1.91.1
           cargo +1.91.1 install --git 'https://github.com/powdr-labs/openvm.git' --tag "v2.0.0-beta.2-powdr" cargo-openvm
 
+      - name: Install OpenVM guest toolchain
+        # `cargo openvm build` invokes `cargo +nightly-2026-01-18 build --target
+        # riscv32im-risc0-zkvm-elf -Z build-std=...`, which needs both the
+        # nightly toolchain and its `rust-src` component.
+        run: |
+          rustup toolchain install nightly-2026-01-18
+          rustup component add rust-src --toolchain nightly-2026-01-18
+
       - name: Run keccak with 100 APCs
         run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-keccak --profile-input 10000 --input 10000 --autoprecompiles 100 --recursion
 
@@ -61,8 +72,8 @@ jobs:
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
-          # prove with 100 APCs
-          /usr/bin/time -v ./run.sh --apc 100  --mode prove-stark || exit 1
+          # Prove with 100 APCs. Block 24171384 has ~5M gas.
+          /usr/bin/time -v ./run.sh --apc 100  --mode prove-stark --block 24171384 || exit 1
           echo "Finished proving with 100 APCs"
 
       - name: Save revisions and run info
