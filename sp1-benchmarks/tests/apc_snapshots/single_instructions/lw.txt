@@ -82,3 +82,6 @@ offset_bit_0 * (selected_word__0_0 - memory_access__prev_value__0__2_0) = 0
 offset_bit_0 * (selected_word__1_0 - memory_access__prev_value__0__3_0) = 0
 msb__msb_0 * (msb__msb_0 - 1) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

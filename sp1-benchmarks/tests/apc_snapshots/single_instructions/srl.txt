@@ -117,3 +117,6 @@ shift_u16__2_0 * (a__0__1_0 - higher_limb__0__3_0) = 0
 a__0__2_0 * (1 - (shift_u16__0_0 + shift_u16__1_0)) = 0
 a__0__3_0 * (1 - shift_u16__0_0) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

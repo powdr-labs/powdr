@@ -110,10 +110,14 @@ fn compile_derived_to_gpu(
     let mut bytecode = Vec::new();
 
     for DerivedVariable {
+        is_new,
         variable,
         computation_method,
     } in derived_columns
     {
+        if !is_new {
+            continue;
+        }
         let apc_col_index = apc_poly_id_to_index[&variable.id];
         let off = bytecode.len() as u32;
         match computation_method {
@@ -128,6 +132,9 @@ fn compile_derived_to_gpu(
                 bytecode.push(OpCode::InvOrZero as u32);
                 emit_expr(&mut bytecode, e1, apc_poly_id_to_index, apc_height);
                 bytecode.push(OpCode::Mul as u32);
+            }
+            ComputationMethod::IfEqZero(_, _, _) => {
+                unreachable!("IfEqZero not expected for new columns")
             }
         }
         let len = (bytecode.len() as u32) - off;

@@ -92,3 +92,6 @@ memory_access__access_timestamp__compare_low_1 * (memory_access__access_timestam
 memory_access__access_timestamp__compare_low_1 * (state__clk_high_0 - memory_access__access_timestamp__prev_high_1) = 0
 memory_access__access_timestamp__compare_low_1 * (65536 * state__clk_16_24_0 + state__clk_0_16_0 + 9) + (1 - memory_access__access_timestamp__compare_low_1) * state__clk_high_0 + (memory_access__access_timestamp__compare_low_1 - 1) * memory_access__access_timestamp__prev_high_1 - (memory_access__access_timestamp__compare_low_1 * memory_access__access_timestamp__prev_low_1 + memory_access__access_timestamp__diff_low_limb_1 + 65536 * memory_access__access_timestamp__diff_high_limb_1 + is_valid) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

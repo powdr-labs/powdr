@@ -80,3 +80,6 @@ offset_bit__0_0 * ((offset_bit__1_0 - 1) * (selected_half_0 - memory_access__pre
 (offset_bit__0_0 - 1) * (offset_bit__1_0 * (selected_half_0 - memory_access__prev_value__0__2_0)) = 0
 offset_bit__0_0 * (offset_bit__1_0 * (selected_half_0 - memory_access__prev_value__0__3_0)) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

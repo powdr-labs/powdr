@@ -816,6 +816,7 @@ mod tests {
             bus_interactions: vec![],
             derived_variables: vec![
                 DerivedVariable::new(
+                    true,
                     "d1",
                     ComputationMethod::QuotientOrZero(
                         GroupedExpression::from_unknown_variable("x1"),
@@ -823,6 +824,7 @@ mod tests {
                     ),
                 ),
                 DerivedVariable::new(
+                    true,
                     "d2",
                     ComputationMethod::QuotientOrZero(
                         GroupedExpression::from_unknown_variable("y1"),
@@ -842,7 +844,7 @@ mod tests {
         system.substitute_by_known(&"x1", &1.into());
         assert_eq!(
             format!("{system}"),
-            "d1 := QuotientOrZero(1, x2)\nd2 := QuotientOrZero(y1, 8)"
+            "d1 (new) := QuotientOrZero(1, x2)\nd2 (new) := QuotientOrZero(y1, 8)"
         );
     }
 }

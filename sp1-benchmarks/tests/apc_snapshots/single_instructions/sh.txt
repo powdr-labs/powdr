@@ -83,3 +83,6 @@ memory_access__access_timestamp__compare_low_0 * (65536 * state__clk_16_24_0 + s
 (memory_access__prev_value__0__2_0 - adapter__op_a_memory__prev_value__0__0_0) * (1 - offset_bit__0_0) * offset_bit__1_0 + store_value__0__2_0 - memory_access__prev_value__0__2_0 = 0
 (memory_access__prev_value__0__3_0 - adapter__op_a_memory__prev_value__0__0_0) * offset_bit__0_0 * offset_bit__1_0 + store_value__0__3_0 - memory_access__prev_value__0__3_0 = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

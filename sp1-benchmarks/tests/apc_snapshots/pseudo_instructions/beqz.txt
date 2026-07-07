@@ -66,3 +66,6 @@ is_branching_0 * ((524386048 * next_pc__0_0 + 66324482) * (524386048 * next_pc__
 (is_valid - is_branching_0) * ((64516 - 16129 * next_pc__0_0) * (64515 - 16129 * next_pc__0_0)) = 0
 (is_valid - is_branching_0) * ((524386048 * next_pc__0_0 + 33162241) * (524386048 * next_pc__0_0 + 33162240)) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

@@ -145,3 +145,6 @@ mult=is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_
 mul_operation__b_msb_0 * (mul_operation__b_msb_0 - 1) = 0
 mul_operation__c_msb_0 * (mul_operation__c_msb_0 - 1) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

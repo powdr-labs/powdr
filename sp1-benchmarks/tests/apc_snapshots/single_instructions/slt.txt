@@ -80,3 +80,6 @@ lt_operation__result__u16_flags__3_0 * (lt_operation__result__u16_flags__3_0 - 1
 (lt_operation__result__u16_flags__0_0 + lt_operation__result__u16_flags__1_0 + lt_operation__result__u16_flags__2_0 + lt_operation__result__u16_flags__3_0) * (lt_operation__result__not_eq_inv_0 * (lt_operation__result__comparison_limbs__0_0 - lt_operation__result__comparison_limbs__1_0) - 1) = 0
 lt_operation__result__u16_compare_operation__bit_0 * (lt_operation__result__u16_compare_operation__bit_0 - 1) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

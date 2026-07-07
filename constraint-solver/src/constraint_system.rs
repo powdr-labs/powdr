@@ -7,6 +7,7 @@ use crate::{
 };
 use derivative::Derivative;
 use itertools::Itertools;
+use num_traits::One;
 use powdr_number::FieldElement;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt::Display, hash::Hash};
@@ -45,9 +46,15 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
                 )
                 .chain(self.derived_variables.iter().map(
                     |DerivedVariable {
+                         is_new,
                          variable,
                          computation_method,
-                     }| { format!("{variable} := {computation_method}") }
+                     }| {
+                        format!(
+                            "{variable} ({}) := {computation_method}",
+                            if *is_new { "new" } else { "old" }
+                        )
+                    }
                 ))
                 .format("\n")
         )
@@ -81,13 +88,17 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
 
 #[derive(Clone, Debug)]
 pub struct DerivedVariable<T, V, E> {
+    /// If true, this variable has been newly created.
+    /// If false, it is just a hint how to compute a pre-existing variable.
+    pub is_new: bool,
     pub variable: V,
     pub computation_method: ComputationMethod<T, E>,
 }
 
 impl<T, V, E> DerivedVariable<T, V, E> {
-    pub fn new(variable: V, computation_method: ComputationMethod<T, E>) -> Self {
+    pub fn new(is_new: bool, variable: V, computation_method: ComputationMethod<T, E>) -> Self {
         Self {
+            is_new,
             variable,
             computation_method,
         }
@@ -103,7 +114,7 @@ where
     where
         S: Serializer,
     {
-        (&self.variable, &self.computation_method).serialize(serializer)
+        (self.is_new, &self.variable, &self.computation_method).serialize(serializer)
     }
 }
 
@@ -116,9 +127,10 @@ where
     where
         D: Deserializer<'de>,
     {
-        let (variable, computation_method) =
-            <(V, ComputationMethod<T, E>)>::deserialize(deserializer)?;
+        let (is_new, variable, computation_method) =
+            <(bool, V, ComputationMethod<T, E>)>::deserialize(deserializer)?;
         Ok(Self {
+            is_new,
             variable,
             computation_method,
         })
@@ -134,6 +146,13 @@ pub enum ComputationMethod<T, E> {
     /// The quotiont (using inversion in the field) of the first argument
     /// by the second argument, or zero if the latter is zero.
     QuotientOrZero(E, E),
+    /// If the first argument is zero, the variable is computed using the second argument,
+    /// otherwise it is computed using the third argument.
+    IfEqZero(
+        E,
+        Box<ComputationMethod<T, E>>,
+        Box<ComputationMethod<T, E>>,
+    ),
 }
 
 impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
@@ -141,7 +160,17 @@ impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
         match self {
             ComputationMethod::Constant(c) => write!(f, "{c}"),
             ComputationMethod::QuotientOrZero(e1, e2) => write!(f, "QuotientOrZero({e1}, {e2})"),
+            ComputationMethod::IfEqZero(e, then_method, else_method) => {
+                write!(f, "IfEqZero({e}, {then_method}, {else_method})")
+            }
         }
+    }
+}
+
+impl<T: RuntimeConstant + One, F: Clone + Ord + Eq> ComputationMethod<T, GroupedExpression<T, F>> {
+    /// Creates a computation method that computes the variable as the value of the given expression.
+    pub fn expression(e: GroupedExpression<T, F>) -> Self {
+        ComputationMethod::QuotientOrZero(e, GroupedExpression::one())
     }
 }
 
@@ -154,6 +183,32 @@ impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
                 e1.referenced_unknown_variables()
                     .chain(e2.referenced_unknown_variables()),
             ),
+            ComputationMethod::IfEqZero(e, then_method, else_method) => Box::new(
+                e.referenced_unknown_variables()
+                    .chain(then_method.referenced_unknown_variables())
+                    .chain(else_method.referenced_unknown_variables()),
+            ),
+        }
+    }
+}
+
+impl<T: Clone, E> ComputationMethod<T, E> {
+    pub fn convert_expression_type<E2>(
+        self,
+        converter: &impl Fn(E) -> E2,
+    ) -> ComputationMethod<T, E2> {
+        match self {
+            ComputationMethod::Constant(c) => ComputationMethod::Constant(c.clone()),
+            ComputationMethod::QuotientOrZero(e1, e2) => {
+                ComputationMethod::QuotientOrZero(converter(e1), converter(e2))
+            }
+            ComputationMethod::IfEqZero(e, then_method, else_method) => {
+                ComputationMethod::IfEqZero(
+                    converter(e),
+                    Box::new(then_method.convert_expression_type(converter)),
+                    Box::new(else_method.convert_expression_type(converter)),
+                )
+            }
         }
     }
 }
@@ -170,6 +225,11 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
                 e1.substitute_by_known(variable, substitution);
                 e2.substitute_by_known(variable, substitution);
             }
+            ComputationMethod::IfEqZero(e, then_method, else_method) => {
+                e.substitute_by_known(variable, substitution);
+                then_method.substitute_by_known(variable, substitution);
+                else_method.substitute_by_known(variable, substitution);
+            }
         }
     }
 
@@ -183,6 +243,11 @@ impl<T: RuntimeConstant + Substitutable<V>, V: Ord + Clone + Eq>
             ComputationMethod::QuotientOrZero(e1, e2) => {
                 e1.substitute_by_unknown(variable, substitution);
                 e2.substitute_by_unknown(variable, substitution);
+            }
+            ComputationMethod::IfEqZero(e, then_method, else_method) => {
+                e.substitute_by_unknown(variable, substitution);
+                then_method.substitute_by_unknown(variable, substitution);
+                else_method.substitute_by_unknown(variable, substitution);
             }
         }
     }
