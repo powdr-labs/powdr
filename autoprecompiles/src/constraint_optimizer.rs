@@ -6,7 +6,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use num_traits::Zero;
 use powdr_constraint_solver::{
     constraint_system::{
         AlgebraicConstraint, BusInteraction, BusInteractionHandler, ComputationMethod,
@@ -367,9 +367,7 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                     )
                 }
             };
-            // A `ComputationMethod` cannot directly represent a plain expression, but `value / 1` works.
-            let hint_computation =
-                ComputationMethod::QuotientOrZero(value, GroupedExpression::one());
+            let hint_computation = ComputationMethod::expression(value);
             let hint = DerivedVariable::new(false, variable.clone(), hint_computation);
             Some((variable.clone(), hint))
         })
