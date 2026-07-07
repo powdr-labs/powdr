@@ -27,12 +27,21 @@ fn lean_enabled() -> bool {
 }
 
 /// Assertions that must hold for the Leanr-optimized output regardless of exact sizes.
+#[allow(clippy::print_stdout)]
 fn assert_lean_output(machine: &SymbolicMachine<BabyBearField>) {
-    // Task 1 emits no witgen hints, so no derived columns.
+    // The witgen-safe Lean FFI path (re-encoding disabled) emits no new derived columns, and these
+    // fixtures carry none on input, so the output has none.
     assert!(machine.derived_columns.is_empty());
     // The optimizer should have produced a non-trivial circuit.
     assert!(machine.main_columns().count() > 0);
     assert!(!machine.constraints.is_empty() || !machine.bus_interactions.is_empty());
+    // Report the counts so the Lean-vs-Rust column benchmark can read them off `--nocapture`.
+    println!(
+        "LEAN_COUNTS columns={} bus_interactions={} constraints={}",
+        machine.main_columns().count(),
+        machine.bus_interactions.len(),
+        machine.constraints.len(),
+    );
 }
 
 const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
