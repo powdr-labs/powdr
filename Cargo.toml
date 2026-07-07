@@ -11,6 +11,7 @@ members = [
   "isa-utils",
   "syscalls",
   "autoprecompiles",
+  "autoprecompiles-lean-ffi",
   "openvm",
   "openvm-bus-interaction-handler",
   "openvm-riscv",
@@ -40,6 +41,7 @@ powdr-riscv-elf = { path = "./riscv-elf", version = "0.1.4" }
 powdr-riscv-types = { path = "./riscv-types", version = "0.1.4" }
 powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
 powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
+powdr-autoprecompiles-lean-ffi = { path = "./autoprecompiles-lean-ffi", version = "0.1.4" }
 powdr-openvm-riscv = { path = "./openvm-riscv", version = "0.1.4" }
 powdr-openvm-bus-interaction-handler = { path = "./openvm-bus-interaction-handler", version = "0.1.4" }
 powdr-openvm = { path = "./openvm", version = "0.1.4" }

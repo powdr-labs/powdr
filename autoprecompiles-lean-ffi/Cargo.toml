@@ -1,0 +1,18 @@
+[package]
+name = "powdr-autoprecompiles-lean-ffi"
+description = "FFI wrapper linking the Leanr (Lean4) circuit optimizer as a static library."
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+# Declares that this crate links a native library, so Cargo propagates the link directives from
+# `build.rs` to dependent crates' final binaries.
+links = "leanr_all"
+
+# This crate intentionally has NO powdr dependencies: it only exposes a `&str -> String`
+# JSON-in/JSON-out entry point over the C FFI, so that `powdr-autoprecompiles` (which defines
+# `SymbolicMachine`) can depend on it without creating a dependency cycle.
+[dependencies]
+
+[build-dependencies]
