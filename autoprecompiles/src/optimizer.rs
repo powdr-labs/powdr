@@ -40,10 +40,12 @@ fn lean_optimizer_enabled() -> bool {
 /// Run the Leanr optimizer via FFI: serialize `{machine, bus_map}` to the powdr export JSON, call
 /// the Lean static library, and deserialize the optimized `SymbolicMachine` back.
 ///
-/// The Lean optimizer never introduces `derived_columns` (Task 1 does not emit witgen hints), but
-/// it *can* introduce new witness columns (e.g. the re-encoding pass), which are serialized with
-/// fresh poly ids strictly above every existing id. Callers must therefore reseed their
-/// `ColumnAllocator` from the returned machine.
+/// The Lean FFI path runs a witgen-safe configuration that does not create hint-less witness
+/// columns (the re-encoding pass, the only one that would, is disabled there), so every column in
+/// the returned machine is either an original column or comes with a `derived_columns` recipe.
+/// `derived_columns` present on the input are carried through verbatim by the Lean optimizer and
+/// deserialize back automatically. Callers must still reseed their `ColumnAllocator` from the
+/// returned machine (`from_max_poly_id_of_machine` accounts for derived-column ids).
 ///
 /// Panics (rather than returning the constrained `Error` type) if serialization, the FFI call, or
 /// deserialization fails; with a valid powdr export none of these happen.
@@ -81,9 +83,10 @@ where
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
     // Optional drop-in: delegate to the Leanr verified optimizer via FFI. It bypasses the whole
-    // native pipeline (including the passes that create new columns), so `derived_columns` stays
-    // empty; we reseed the column allocator from the returned machine so later stages (e.g.
-    // `add_guards`) cannot collide with any columns Lean introduced.
+    // native pipeline (including the passes that create new columns). Any `derived_columns` on the
+    // input are carried through by Lean and preserved on the output; the Lean path itself adds no
+    // new hint-less columns. We reseed the column allocator from the returned machine so later
+    // stages (e.g. `add_guards`) cannot collide with any id Lean carried through.
     if lean_optimizer_enabled() {
         let optimized = optimize_via_lean(&machine, bus_map);
         let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&optimized);

@@ -306,9 +306,19 @@ pub struct ColumnAllocator {
 
 impl ColumnAllocator {
     pub fn from_max_poly_id_of_machine(machine: &SymbolicMachine<impl FieldElement>) -> Self {
+        // `main_columns()` only scans constraints and bus interactions, so a `derived_columns`
+        // entry that introduces a brand-new column (`is_new = true`) can carry a poly id above
+        // every id seen there. Include those variable ids so the allocator never reissues one.
+        let max_main = machine.main_columns().map(|c| c.id).max().unwrap_or(0);
+        let max_derived = machine
+            .derived_columns
+            .iter()
+            .map(|dc| dc.variable.id)
+            .max()
+            .unwrap_or(0);
         Self {
             subs: Vec::new(),
-            next_poly_id: machine.main_columns().map(|c| c.id).max().unwrap_or(0) + 1,
+            next_poly_id: max_main.max(max_derived) + 1,
         }
     }
 
