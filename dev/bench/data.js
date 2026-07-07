@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783381624179,
+  "lastUpdate": 1783467597603,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416295,6 +416295,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 42052889280,
             "range": "± 523498570",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "chriseth",
+            "username": "chriseth",
+            "email": "chris@ethereum.org"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "fb2589aea393d1b0fc62f25a3f9aae077c846ba6",
+          "message": "Hints for existing vars (#3761)\n\nThis adds a mechanism that allows to provide a way to compute the value\nof variables that were removed. This is sometimes helpful, especially in\ncomplicated cases, to prove semantic equivalence of constraint systems.\n\nWe re-use the existing \"derived columns\" mechanism and add the \"removed\nvariables\" in the same way, adding a flag that indicates if the variable\nwas added or removed.\n\n---------\n\nCo-authored-by: Georg Wiese <georgwiese@gmail.com>",
+          "timestamp": "2026-07-07T12:42:31Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/fb2589aea393d1b0fc62f25a3f9aae077c846ba6"
+        },
+        "date": 1783467588676,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 15652126947,
+            "range": "± 165191801",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 39964321562,
+            "range": "± 61288760",
             "unit": "ns/iter"
           }
         ]
