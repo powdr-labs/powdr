@@ -487,7 +487,7 @@ b_not_neg_not_overflow_0 * (b_not_neg_not_overflow_0 - 1) = 0
 is_valid * (is_valid - 1) = 0
 
 // Derived columns:
-c_times_quotient_lower__product_msb__msb_0 (old) = QuotientOrZero(0, 1)
-c_times_quotient_upper__product_msb__msb_0 (old) = QuotientOrZero(0, 1)
-quot_msb__msb_0 (old) = QuotientOrZero(0, 1)
+c_times_quotient_lower__product_msb__msb_0 (old) = 0
+c_times_quotient_upper__product_msb__msb_0 (old) = 0
+quot_msb__msb_0 (old) = 0
 is_valid (new) = 1

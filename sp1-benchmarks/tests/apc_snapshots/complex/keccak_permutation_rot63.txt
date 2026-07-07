@@ -98,5 +98,5 @@ is_valid * (is_valid - 1) = 0
 limb_result__0_0 (old) = QuotientOrZero(65024 * lower_limb__0__0_0 + 2 * lower_limb__0__1_0 - 65024 * adapter__op_b_memory__prev_value__0__0_0, 1)
 limb_result__1_0 (old) = QuotientOrZero(65024 * lower_limb__0__1_0 + 2 * lower_limb__0__2_0 - 65024 * adapter__op_b_memory__prev_value__0__1_0, 1)
 limb_result__2_0 (old) = QuotientOrZero(2 * adapter__op_b_memory__prev_value__0__3_0 + 65024 * lower_limb__0__2_0 - (65024 * adapter__op_b_memory__prev_value__0__2_0 + 65536 * a__0__0_0), 1)
-sllw_msb__msb_1 (old) = QuotientOrZero(0, 1)
+sllw_msb__msb_1 (old) = 0
 is_valid (new) = 1
