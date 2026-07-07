@@ -11,6 +11,7 @@ repository.workspace = true
 powdr-expression.workspace = true
 powdr-number.workspace = true
 powdr-constraint-solver.workspace = true
+powdr-autoprecompiles-lean-ffi.workspace = true
 
 itertools.workspace = true
 log.workspace = true

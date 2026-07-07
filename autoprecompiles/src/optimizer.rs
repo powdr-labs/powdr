@@ -28,6 +28,41 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
 
+/// Returns whether the Leanr (Lean4) verified optimizer should be used instead of the native
+/// Rust optimizer, controlled by the `POWDR_USE_LEAN_OPTIMIZER` environment variable
+/// (`1`/`true`). See `optimize_via_lean`.
+fn lean_optimizer_enabled() -> bool {
+    std::env::var("POWDR_USE_LEAN_OPTIMIZER")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+/// Run the Leanr optimizer via FFI: serialize `{machine, bus_map}` to the powdr export JSON, call
+/// the Lean static library, and deserialize the optimized `SymbolicMachine` back.
+///
+/// The Lean optimizer never introduces `derived_columns` (Task 1 does not emit witgen hints), but
+/// it *can* introduce new witness columns (e.g. the re-encoding pass), which are serialized with
+/// fresh poly ids strictly above every existing id. Callers must therefore reseed their
+/// `ColumnAllocator` from the returned machine.
+///
+/// Panics (rather than returning the constrained `Error` type) if serialization, the FFI call, or
+/// deserialization fails; with a valid powdr export none of these happen.
+fn optimize_via_lean<T, BusTypes>(
+    machine: &SymbolicMachine<T>,
+    bus_map: &BusMap<BusTypes>,
+) -> SymbolicMachine<T>
+where
+    T: FieldElement,
+    BusTypes: serde::Serialize,
+{
+    let input = serde_json::json!({ "machine": machine, "bus_map": bus_map });
+    let input_str = serde_json::to_string(&input).expect("serializing machine for Lean FFI");
+    let output_str = powdr_autoprecompiles_lean_ffi::optimize_json(&input_str)
+        .unwrap_or_else(|e| panic!("Leanr optimizer FFI failed: {e}"));
+    serde_json::from_str(&output_str)
+        .unwrap_or_else(|e| panic!("deserializing Leanr optimizer output failed: {e}"))
+}
+
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
@@ -42,9 +77,19 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
 where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
-    BusTypes: PartialEq + Eq + Clone + Display,
+    BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
+    // Optional drop-in: delegate to the Leanr verified optimizer via FFI. It bypasses the whole
+    // native pipeline (including the passes that create new columns), so `derived_columns` stays
+    // empty; we reseed the column allocator from the returned machine so later stages (e.g.
+    // `add_guards`) cannot collide with any columns Lean introduced.
+    if lean_optimizer_enabled() {
+        let optimized = optimize_via_lean(&machine, bus_map);
+        let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&optimized);
+        return Ok((optimized, column_allocator));
+    }
+
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
