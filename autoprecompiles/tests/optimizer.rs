@@ -20,6 +20,7 @@ use test_log::test;
 /// The Lean optimizer produces a valid but differently-shaped circuit than the native Rust one,
 /// so the exact-count `expect![...]` assertions below only hold for the Rust path. Under the flag
 /// we instead check the invariants that must hold for any correct Task-1 Lean run.
+#[cfg(feature = "lean-optimizer")]
 fn lean_enabled() -> bool {
     std::env::var("POWDR_USE_LEAN_OPTIMIZER")
         .map(|v| v == "1" || v == "true")
@@ -27,6 +28,7 @@ fn lean_enabled() -> bool {
 }
 
 /// Assertions that must hold for the Leanr-optimized output regardless of exact sizes.
+#[cfg(feature = "lean-optimizer")]
 fn assert_lean_output(machine: &SymbolicMachine<BabyBearField>) {
     // Task 1 emits no witgen hints, so no derived columns.
     assert!(machine.derived_columns.is_empty());
@@ -121,6 +123,7 @@ fn test_optimize() {
     .unwrap()
     .0;
 
+    #[cfg(feature = "lean-optimizer")]
     if lean_enabled() {
         assert_lean_output(&machine);
         return;
@@ -161,6 +164,7 @@ fn test_ecrecover() {
     .unwrap()
     .0;
 
+    #[cfg(feature = "lean-optimizer")]
     if lean_enabled() {
         assert_lean_output(&machine);
         return;
@@ -201,6 +205,7 @@ fn test_sha256() {
     .unwrap()
     .0;
 
+    #[cfg(feature = "lean-optimizer")]
     if lean_enabled() {
         assert_lean_output(&machine);
         return;
@@ -241,6 +246,7 @@ fn test_single_div_nondet() {
     .unwrap()
     .0;
 
+    #[cfg(feature = "lean-optimizer")]
     if lean_enabled() {
         assert_lean_output(&machine);
         return;
@@ -305,6 +311,7 @@ fn test_optimize_reth_op() {
     .unwrap()
     .0;
 
+    #[cfg(feature = "lean-optimizer")]
     if lean_enabled() {
         assert_lean_output(&machine);
         return;
@@ -343,6 +350,7 @@ fn wasm_register_reuse() {
     .unwrap()
     .0;
 
+    #[cfg(feature = "lean-optimizer")]
     if lean_enabled() {
         assert_lean_output(&machine);
         return;

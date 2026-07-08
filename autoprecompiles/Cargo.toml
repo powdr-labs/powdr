@@ -11,7 +11,7 @@ repository.workspace = true
 powdr-expression.workspace = true
 powdr-number.workspace = true
 powdr-constraint-solver.workspace = true
-powdr-autoprecompiles-lean-ffi.workspace = true
+powdr-autoprecompiles-lean-ffi = { workspace = true, optional = true }
 
 itertools.workspace = true
 log.workspace = true
@@ -29,6 +29,12 @@ metrics.workspace = true
 deepsize2 = "0.1.0"
 derive_more.workspace = true
 derivative.workspace = true
+
+[features]
+# Opt-in: route `optimize` through the Leanr (Lean4) verified optimizer via FFI when
+# `POWDR_USE_LEAN_OPTIMIZER=1`. Off by default; requires a Lean toolchain + `LEANR_DIR` to build
+# the `powdr-autoprecompiles-lean-ffi` static library.
+lean-optimizer = ["dep:powdr-autoprecompiles-lean-ffi"]
 
 [dev-dependencies]
 expect-test = "1.5.1"

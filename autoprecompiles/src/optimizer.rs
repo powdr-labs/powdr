@@ -28,9 +28,22 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
 
+/// Marker bound for `optimize`'s `BusTypes`. With the `lean-optimizer` feature it requires
+/// `serde::Serialize` (the Lean FFI path serializes the bus map); without the feature it is
+/// vacuous, so the native path imposes no extra bound.
+#[cfg(feature = "lean-optimizer")]
+pub trait OptimizerBusType: serde::Serialize {}
+#[cfg(feature = "lean-optimizer")]
+impl<T: serde::Serialize> OptimizerBusType for T {}
+#[cfg(not(feature = "lean-optimizer"))]
+pub trait OptimizerBusType {}
+#[cfg(not(feature = "lean-optimizer"))]
+impl<T> OptimizerBusType for T {}
+
 /// Returns whether the Leanr (Lean4) verified optimizer should be used instead of the native
 /// Rust optimizer, controlled by the `POWDR_USE_LEAN_OPTIMIZER` environment variable
 /// (`1`/`true`). See `optimize_via_lean`.
+#[cfg(feature = "lean-optimizer")]
 fn lean_optimizer_enabled() -> bool {
     std::env::var("POWDR_USE_LEAN_OPTIMIZER")
         .map(|v| v == "1" || v == "true")
@@ -47,6 +60,7 @@ fn lean_optimizer_enabled() -> bool {
 ///
 /// Panics (rather than returning the constrained `Error` type) if serialization, the FFI call, or
 /// deserialization fails; with a valid powdr export none of these happen.
+#[cfg(feature = "lean-optimizer")]
 fn optimize_via_lean<T, BusTypes>(
     machine: &SymbolicMachine<T>,
     bus_map: &BusMap<BusTypes>,
@@ -77,13 +91,15 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
 where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
-    BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
+    BusTypes: PartialEq + Eq + Clone + Display + OptimizerBusType,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
-    // Optional drop-in: delegate to the Leanr verified optimizer via FFI. It bypasses the whole
-    // native pipeline (including the passes that create new columns), so `derived_columns` stays
-    // empty; we reseed the column allocator from the returned machine so later stages (e.g.
-    // `add_guards`) cannot collide with any columns Lean introduced.
+    // Optional drop-in (feature `lean-optimizer`, env `POWDR_USE_LEAN_OPTIMIZER`): delegate to the
+    // Leanr verified optimizer via FFI. It bypasses the whole native pipeline, including the two
+    // column-creating `rule_based_optimization` passes, so `derived_columns` stays empty. Any
+    // witness columns Lean introduces carry fresh poly ids, so we reseed the column allocator from
+    // the returned machine so later stages (e.g. `add_guards`) cannot collide with them.
+    #[cfg(feature = "lean-optimizer")]
     if lean_optimizer_enabled() {
         let optimized = optimize_via_lean(&machine, bus_map);
         let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&optimized);

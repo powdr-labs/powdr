@@ -52,7 +52,8 @@ mod tests {
 
     #[test]
     fn empty_machine_roundtrips() {
-        let input = r#"{"machine":{"constraints":[],"bus_interactions":[]},"bus_map":{"bus_ids":{}}}"#;
+        let input =
+            r#"{"machine":{"constraints":[],"bus_interactions":[]},"bus_map":{"bus_ids":{}}}"#;
         let out = optimize_json(input).expect("optimize_json failed");
         // Key order is not significant for serde; just check the shape.
         assert!(out.contains("\"constraints\":[]"), "got: {out}");
@@ -66,4 +67,3 @@ mod tests {
         assert!(err.contains("Leanr optimizer error"), "got: {err}");
     }
 }
-

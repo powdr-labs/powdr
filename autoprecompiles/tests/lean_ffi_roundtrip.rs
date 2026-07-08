@@ -8,6 +8,9 @@
 //!
 //! This test lives in `powdr-autoprecompiles` (not the FFI crate) because it needs
 //! `SymbolicMachine`/`BusMap`; putting it in the FFI crate would create a dependency cycle.
+//!
+//! Compiled only with the `lean-optimizer` feature (needs the Lean static library + `LEANR_DIR`).
+#![cfg(feature = "lean-optimizer")]
 
 use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::export::{ApcWithBusMap, SimpleInstruction};
