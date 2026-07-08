@@ -318,6 +318,18 @@ impl ColumnAllocator {
         id
     }
 
+    /// Raises `next_poly_id` so that it is strictly greater than every poly id used in the given
+    /// machine, without touching the recorded substitutions (`subs`). Used by the Lean-optimizer
+    /// path to preserve the per-instruction `subs` (needed by witgen) while still reseeding the
+    /// collision-avoidance for ids issued afterwards (e.g. by `add_guards`).
+    pub fn raise_next_poly_id_above_machine(
+        &mut self,
+        machine: &SymbolicMachine<impl FieldElement>,
+    ) {
+        let above_machine = machine.main_columns().map(|c| c.id).max().unwrap_or(0) + 1;
+        self.next_poly_id = self.next_poly_id.max(above_machine);
+    }
+
     /// Returns whether the given poly_id is known (i.e., was issued by this allocator)
     pub fn is_known_id(&self, poly_id: u64) -> bool {
         poly_id < self.next_poly_id

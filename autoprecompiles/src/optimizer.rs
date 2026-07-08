@@ -102,7 +102,12 @@ where
     #[cfg(feature = "lean-optimizer")]
     if lean_optimizer_enabled() {
         let optimized = optimize_via_lean(&machine, bus_map);
-        let column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&optimized);
+        // Preserve the input allocator's per-instruction `subs` (populated by
+        // `statements_to_symbolic_machine`, one entry per instruction) — witgen relies on it to map
+        // original columns to APC columns (see `record_arena_dimension_by_air_name_per_apc_call`).
+        // We only bump `next_poly_id` above every poly id in the Lean-optimized machine so later
+        // stages (e.g. `add_guards`) issue fresh, non-colliding ids.
+        column_allocator.raise_next_poly_id_above_machine(&optimized);
         return Ok((optimized, column_allocator));
     }
 
