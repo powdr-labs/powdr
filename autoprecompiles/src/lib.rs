@@ -269,7 +269,22 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
             .unique_references()
             .map(|r| r.id)
             .collect::<BTreeSet<_>>();
-        // Only keep substitutions from the column allocator if the target poly_id is used in the machine
+        // Poly_ids referenced by derived-column computation methods. These may point at columns that
+        // were substituted out of the constraints/bus interactions (hence absent from
+        // `all_references`) but whose values witgen still needs to compute the derived column — e.g.
+        // Leanr's re-encoding pass references the original group columns. We keep their substitutions
+        // so witgen can recover the removed columns' values from the original instruction trace.
+        // In the native optimizer path derived methods only reference surviving columns, so this set
+        // is a subset of `all_references` and the retained `subs` are unchanged.
+        let derived_referenced = machine
+            .derived_columns
+            .iter()
+            .flat_map(|d| d.computation_method.expressions())
+            .flat_map(|e| e.unique_references())
+            .map(|r| r.id)
+            .collect::<BTreeSet<_>>();
+        // Only keep substitutions from the column allocator if the target poly_id is used in the
+        // machine or referenced by a derived column.
         let subs = column_allocator
             .subs
             .iter()
@@ -277,12 +292,12 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
                 subs.iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
-                        all_references
-                            .contains(apc_poly_id)
-                            .then_some(Substitution {
-                                original_poly_index,
-                                apc_poly_id: *apc_poly_id,
-                            })
+                        (all_references.contains(apc_poly_id)
+                            || derived_referenced.contains(apc_poly_id))
+                        .then_some(Substitution {
+                            original_poly_index,
+                            apc_poly_id: *apc_poly_id,
+                        })
                     })
                     .collect_vec()
             })

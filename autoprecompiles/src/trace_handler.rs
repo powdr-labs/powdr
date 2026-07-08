@@ -20,6 +20,12 @@ pub struct TraceData<'a, F, D> {
     pub dummy_values: Vec<Vec<OriginalRowReference<'a, D>>>,
     /// The mapping from dummy trace index to APC index for each instruction.
     pub dummy_trace_index_to_apc_index_by_instruction: Vec<Vec<(usize, usize)>>,
+    /// For each instruction, the mapping from dummy trace index to the poly_id of a column that was
+    /// substituted out of the APC (so it has no index in `apc_poly_id_to_index`) but is still
+    /// referenced by a derived column's computation method. Witgen reads these values from the
+    /// original instruction trace to evaluate the derived columns. Empty in the native optimizer
+    /// path, where derived columns only reference surviving (indexed) columns.
+    pub removed_column_dummy_index_by_instruction: Vec<Vec<(usize, u64)>>,
     /// The mapping from poly_id to the index in the list of apc columns.
     /// The values are always unique and contiguous.
     pub apc_poly_id_to_index: BTreeMap<u64, usize>,
@@ -87,19 +93,28 @@ where
         )
         .collect::<Vec<_>>();
 
-    let dummy_trace_index_to_apc_index_by_instruction = instructions_with_subs
-        .iter()
-        .map(|(_, subs)| {
-            subs.iter()
-                .map(|substitution| {
-                    (
-                        substitution.original_poly_index,
-                        apc_poly_id_to_index[&substitution.apc_poly_id],
-                    )
-                })
-                .collect_vec()
-        })
-        .collect();
+    // Partition each instruction's substitutions into surviving columns (those with an index in
+    // `apc_poly_id_to_index`, copied directly into the APC row) and removed-but-referenced columns
+    // (substituted out of the APC yet referenced by a derived column, whose values witgen reads from
+    // the original trace to evaluate derived columns). In the native path every substitution targets
+    // a surviving column, so the removed partition is empty and the surviving partition is identical
+    // to the previous unconditional mapping.
+    let mut dummy_trace_index_to_apc_index_by_instruction: Vec<Vec<(usize, usize)>> =
+        Vec::with_capacity(instructions_with_subs.len());
+    let mut removed_column_dummy_index_by_instruction: Vec<Vec<(usize, u64)>> =
+        Vec::with_capacity(instructions_with_subs.len());
+    for (_, subs) in &instructions_with_subs {
+        let mut surviving = Vec::new();
+        let mut removed = Vec::new();
+        for substitution in subs.iter() {
+            match apc_poly_id_to_index.get(&substitution.apc_poly_id) {
+                Some(index) => surviving.push((substitution.original_poly_index, *index)),
+                None => removed.push((substitution.original_poly_index, substitution.apc_poly_id)),
+            }
+        }
+        dummy_trace_index_to_apc_index_by_instruction.push(surviving);
+        removed_column_dummy_index_by_instruction.push(removed);
+    }
 
     let dummy_values = (0..apc_call_count)
         .into_par_iter()
@@ -128,6 +143,7 @@ where
     TraceData {
         dummy_values,
         dummy_trace_index_to_apc_index_by_instruction,
+        removed_column_dummy_index_by_instruction,
         apc_poly_id_to_index,
         columns_to_compute,
     }
