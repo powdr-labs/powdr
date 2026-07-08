@@ -192,6 +192,22 @@ impl<T, F> ComputationMethod<T, GroupedExpression<T, F>> {
     }
 }
 
+impl<T, E> ComputationMethod<T, E> {
+    /// Returns an iterator over all expressions `E` directly contained in this method
+    /// (recursing through nested `IfEqZero` methods).
+    pub fn expressions(&self) -> Box<dyn Iterator<Item = &E> + '_> {
+        match self {
+            ComputationMethod::Constant(_) => Box::new(std::iter::empty()),
+            ComputationMethod::QuotientOrZero(e1, e2) => Box::new([e1, e2].into_iter()),
+            ComputationMethod::IfEqZero(e, then_method, else_method) => Box::new(
+                std::iter::once(e)
+                    .chain(then_method.expressions())
+                    .chain(else_method.expressions()),
+            ),
+        }
+    }
+}
+
 impl<T: Clone, E> ComputationMethod<T, E> {
     pub fn convert_expression_type<E2>(
         self,

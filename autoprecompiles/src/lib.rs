@@ -326,7 +326,25 @@ impl ColumnAllocator {
         &mut self,
         machine: &SymbolicMachine<impl FieldElement>,
     ) {
-        let above_machine = machine.main_columns().map(|c| c.id).max().unwrap_or(0) + 1;
+        // `main_columns()` only ranges over constraints and bus interactions, not `derived_columns`,
+        // so include the derived columns' own variable ids and any ids referenced by their
+        // computation methods — otherwise ids issued afterwards (e.g. by `add_guards`) could
+        // collide with a derived column that never appears in a constraint.
+        let derived_ids = machine.derived_columns.iter().flat_map(|d| {
+            std::iter::once(d.variable.id).chain(
+                d.computation_method
+                    .expressions()
+                    .flat_map(|e| e.unique_references())
+                    .map(|r| r.id),
+            )
+        });
+        let above_machine = machine
+            .main_columns()
+            .map(|c| c.id)
+            .chain(derived_ids)
+            .max()
+            .unwrap_or(0)
+            + 1;
         self.next_poly_id = self.next_poly_id.max(above_machine);
     }
 

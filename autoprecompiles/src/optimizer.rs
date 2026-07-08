@@ -53,10 +53,12 @@ fn lean_optimizer_enabled() -> bool {
 /// Run the Leanr optimizer via FFI: serialize `{machine, bus_map}` to the powdr export JSON, call
 /// the Lean static library, and deserialize the optimized `SymbolicMachine` back.
 ///
-/// The Lean optimizer never introduces `derived_columns` (Task 1 does not emit witgen hints), but
-/// it *can* introduce new witness columns (e.g. the re-encoding pass), which are serialized with
-/// fresh poly ids strictly above every existing id. Callers must therefore reseed their
-/// `ColumnAllocator` from the returned machine.
+/// The Lean optimizer can introduce new witness columns (e.g. the re-encoding pass); these are
+/// exported both as `derived_columns` (with a `ComputationMethod` telling witgen how to fill them)
+/// and, where they occur, in the constraints, all carrying fresh poly ids strictly above every
+/// existing id. The deserialized machine preserves those `derived_columns`, and callers must
+/// reseed their `ColumnAllocator` from the returned machine (see `raise_next_poly_id_above_machine`,
+/// which accounts for derived-column ids too).
 ///
 /// Panics (rather than returning the constrained `Error` type) if serialization, the FFI call, or
 /// deserialization fails; with a valid powdr export none of these happen.
@@ -95,18 +97,18 @@ where
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
     // Optional drop-in (feature `lean-optimizer`, env `POWDR_USE_LEAN_OPTIMIZER`): delegate to the
-    // Leanr verified optimizer via FFI. It bypasses the whole native pipeline, including the two
-    // column-creating `rule_based_optimization` passes, so `derived_columns` stays empty. Any
-    // witness columns Lean introduces carry fresh poly ids, so we reseed the column allocator from
-    // the returned machine so later stages (e.g. `add_guards`) cannot collide with them.
+    // Leanr verified optimizer via FFI. It bypasses the whole native pipeline. Unlike the native
+    // path, the Lean optimizer *does* emit `derived_columns` (witgen hints for the witness columns
+    // it introduces, e.g. in the re-encoding pass); the deserialized machine keeps them.
     #[cfg(feature = "lean-optimizer")]
     if lean_optimizer_enabled() {
         let optimized = optimize_via_lean(&machine, bus_map);
         // Preserve the input allocator's per-instruction `subs` (populated by
         // `statements_to_symbolic_machine`, one entry per instruction) — witgen relies on it to map
         // original columns to APC columns (see `record_arena_dimension_by_air_name_per_apc_call`).
-        // We only bump `next_poly_id` above every poly id in the Lean-optimized machine so later
-        // stages (e.g. `add_guards`) issue fresh, non-colliding ids.
+        // We only bump `next_poly_id` above every poly id in the Lean-optimized machine (including
+        // ids used by its derived columns) so later stages (e.g. `add_guards`) issue fresh,
+        // non-colliding ids.
         column_allocator.raise_next_poly_id_above_machine(&optimized);
         return Ok((optimized, column_allocator));
     }

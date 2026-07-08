@@ -42,11 +42,15 @@ fn roundtrip(fixture: &str) {
     let optimized: SymbolicMachine<BabyBearField> = serde_json::from_str(&output_str)
         .unwrap_or_else(|e| panic!("deserializing Lean output for {fixture} failed: {e}"));
 
-    // Task 1: no witgen hints, so derived columns stay empty.
-    assert!(
-        optimized.derived_columns.is_empty(),
-        "expected empty derived_columns for {fixture}"
-    );
+    // The Lean optimizer may emit `derived_columns` (witgen hints for the witness columns it
+    // introduces, e.g. keccak's re-encoding pass). Every such entry is a freshly introduced column,
+    // so `is_new` holds; the exact count is snapshotted in `optimizer.rs`.
+    for dc in &optimized.derived_columns {
+        assert!(
+            dc.is_new,
+            "Lean-introduced derived columns are always new for {fixture}"
+        );
+    }
     // The optimizer reduces size; the result should be non-empty and no larger than the input.
     assert!(
         optimized.constraints.len() <= machine.constraints.len(),
