@@ -147,6 +147,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         let TraceData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
+            removed_column_dummy_index_by_instruction,
             apc_poly_id_to_index,
             columns_to_compute,
         } = generate_trace(
@@ -181,6 +182,21 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     }
                 }
 
+                // Collect the values of columns that were substituted out of the APC but are still
+                // referenced by a derived column's computation method (e.g. re-encoding's original
+                // group columns). These have no slot in `row_slice`; their values come straight from
+                // the original instruction trace. Empty in the native optimizer path.
+                let removed_column_values: HashMap<u64, BabyBear> = dummy_values
+                    .iter()
+                    .map(|r| &r.data[r.start..r.start + r.length])
+                    .zip_eq(&removed_column_dummy_index_by_instruction)
+                    .flat_map(|(dummy_row, removed)| {
+                        removed.iter().map(move |(dummy_trace_index, poly_id)| {
+                            (*poly_id, dummy_row[*dummy_trace_index])
+                        })
+                    })
+                    .collect();
+
                 // Fill in the columns we have to compute from other columns
                 // (these are either new columns or for example the "is_valid" column).
                 for derived_column in columns_to_compute {
@@ -190,6 +206,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                             &derived_column.computation_method,
                             row_slice,
                             &apc_poly_id_to_index,
+                            &removed_column_values,
                         );
                     }
                 }
@@ -225,10 +242,24 @@ fn evaluate_computation_method(
     method: &ComputationMethod<BabyBear, AlgebraicExpression<BabyBear>>,
     row_slice: &[BabyBear],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
+    removed_column_values: &HashMap<u64, BabyBear>,
 ) -> BabyBear {
     let eval = |e: &AlgebraicExpression<BabyBear>| {
         e.to_expression(&|n| *n, &|column_ref| {
-            row_slice[apc_poly_id_to_index[&column_ref.id]]
+            // Surviving columns live in `row_slice`; columns substituted out of the APC but still
+            // referenced by this derived column are resolved from the original instruction trace.
+            match apc_poly_id_to_index.get(&column_ref.id) {
+                Some(index) => row_slice[*index],
+                None => *removed_column_values
+                    .get(&column_ref.id)
+                    .unwrap_or_else(|| {
+                        panic!(
+                        "derived column references poly id {} which is neither an APC column nor a \
+                         removed column recoverable from the original trace",
+                        column_ref.id
+                    )
+                    }),
+            }
         })
     };
     match method {
@@ -243,10 +274,85 @@ fn evaluate_computation_method(
         }
         ComputationMethod::IfEqZero(condition, then, else_) => {
             if eval(condition).is_zero() {
-                evaluate_computation_method(then, row_slice, apc_poly_id_to_index)
+                evaluate_computation_method(
+                    then,
+                    row_slice,
+                    apc_poly_id_to_index,
+                    removed_column_values,
+                )
             } else {
-                evaluate_computation_method(else_, row_slice, apc_poly_id_to_index)
+                evaluate_computation_method(
+                    else_,
+                    row_slice,
+                    apc_poly_id_to_index,
+                    removed_column_values,
+                )
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use powdr_autoprecompiles::expression::AlgebraicReference;
+    use std::sync::Arc;
+
+    fn col(id: u64) -> AlgebraicExpression<BabyBear> {
+        AlgebraicExpression::Reference(AlgebraicReference {
+            name: Arc::new(format!("c{id}")),
+            id,
+        })
+    }
+
+    fn num(v: u32) -> AlgebraicExpression<BabyBear> {
+        AlgebraicExpression::Number(BabyBear::from_u32(v))
+    }
+
+    /// A derived-column method that simply copies the value of column `id`
+    /// (`QuotientOrZero(col, 1)` evaluates to `col`).
+    fn copy_of(id: u64) -> ComputationMethod<BabyBear, AlgebraicExpression<BabyBear>> {
+        ComputationMethod::QuotientOrZero(col(id), num(1))
+    }
+
+    /// A surviving column present in `apc_poly_id_to_index` is read from `row_slice`
+    /// (unchanged native behavior; `removed_column_values` is empty here).
+    #[test]
+    fn resolves_surviving_column_from_row_slice() {
+        let apc_poly_id_to_index: BTreeMap<u64, usize> = [(5u64, 1usize)].into_iter().collect();
+        let row_slice = [BabyBear::from_u32(11), BabyBear::from_u32(22)];
+        let removed = HashMap::new();
+        let got =
+            evaluate_computation_method(&copy_of(5), &row_slice, &apc_poly_id_to_index, &removed);
+        assert_eq!(got, BabyBear::from_u32(22));
+    }
+
+    /// The fix: a column substituted out of the APC (absent from `apc_poly_id_to_index`, e.g.
+    /// re-encoding's original group columns 830/831) is resolved from the original instruction
+    /// trace via `removed_column_values` instead of panicking on the missing index.
+    /// Pre-fix, `apc_poly_id_to_index[&830]` was an unconditional `BTreeMap` index and panicked.
+    #[test]
+    fn resolves_removed_column_from_original_trace() {
+        let apc_poly_id_to_index: BTreeMap<u64, usize> = [(5u64, 0usize)].into_iter().collect();
+        let row_slice = [BabyBear::from_u32(99)];
+        let removed: HashMap<u64, BabyBear> =
+            [(830u64, BabyBear::from_u32(7))].into_iter().collect();
+        // 830 is NOT in apc_poly_id_to_index; without the fix this indexes a missing key.
+        assert!(!apc_poly_id_to_index.contains_key(&830));
+        let got =
+            evaluate_computation_method(&copy_of(830), &row_slice, &apc_poly_id_to_index, &removed);
+        assert_eq!(got, BabyBear::from_u32(7));
+    }
+
+    /// A reference that is neither a surviving APC column nor a recoverable removed column fails
+    /// with a legible message rather than a bare map-index panic.
+    #[test]
+    #[should_panic(expected = "neither an APC column nor a")]
+    fn panics_legibly_on_truly_unknown_column() {
+        let apc_poly_id_to_index: BTreeMap<u64, usize> = BTreeMap::new();
+        let row_slice: [BabyBear; 0] = [];
+        let removed = HashMap::new();
+        let _ =
+            evaluate_computation_method(&copy_of(830), &row_slice, &apc_poly_id_to_index, &removed);
     }
 }
