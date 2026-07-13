@@ -327,8 +327,10 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                 }
                 ConstraintRef::BusInteraction(bus_interaction) => {
                     let bus_id = bus_interaction.bus_id.try_to_number().unwrap();
-                    // Only stateless bus interactions can be removed.
-                    let is_stateless = !bus_interaction_handler.is_stateful(bus_id);
+                    if bus_interaction_handler.is_stateful(bus_id) {
+                        // Only stateless bus interactions can be removed.
+                        return None;
+                    }
                     // TODO: This is overly strict.
                     // We assume that the bus interaction is satisfiable. Given that it is, there
                     // will be at least one assignment of the payload fields that satisfies it.
@@ -342,25 +344,22 @@ fn remove_free_variables<T: FieldElement, V: Clone + Ord + Eq + Hash + Display>(
                         .enumerate()
                         .filter(|(_, field)| field.try_to_number().is_none())
                         .exactly_one()
-                        .ok()
-                        .map(|(index, _)| index);
+                        .ok()?
+                        .0;
                     // If the expression is linear in the free variable, the prover would be able to solve for it
                     // to satisfy the constraint. Otherwise, this is not necessarily the case.
-                    // Note that if the above check is true, there will only be one field of degree > 0.
-                    let all_degrees_at_most_one = bus_interaction
+                    // Note that if the above check passes, there will only be one field of degree > 0.
+                    if bus_interaction
                         .payload
                         .iter()
-                        .all(|field| field.degree_of_variable(variable) <= 1);
-                    if !(is_stateless
-                        && only_unknown_payload_index.is_some()
-                        && all_degrees_at_most_one)
+                        .any(|field| field.degree_of_variable(variable) > 1)
                     {
                         return None;
                     }
                     // We remove the variable, so we must be able to compute a hint for it.
                     free_variable_value_in_bus_interaction(
                         variable,
-                        only_unknown_payload_index.unwrap(),
+                        only_unknown_payload_index,
                         bus_interaction,
                         &*solver,
                         &bus_interaction_handler,
