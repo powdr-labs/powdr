@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783985839417,
+  "lastUpdate": 1784072247353,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416533,6 +416533,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 39799585289,
             "range": "± 129443335",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Leo",
+            "username": "leonardoalt",
+            "email": "leo@powdrlabs.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "14b3e3053062c8bb510499cbe07763d5065e1f01",
+          "message": "CI: install cargo-openvm with --locked (#3786)\n\n## Problem\n\nThe `test_apc_reth_compilation` and `test_apc_reth_app_proof` jobs\nstarted failing on unrelated PRs (e.g. #3784) at the \"Install cargo\nopenvm\" step:\n\n```\nerror: failed to compile cargo-openvm v2.0.0-beta.2\nCaused by:\n  rustc 1.91.1 is not supported by the following packages:\n    aws-smithy-async@1.3.0 requires rustc 1.94.1\n    aws-smithy-http@0.64.0 requires rustc 1.94.1\n    ...\n```\n\n`cargo install` without `--locked` re-resolves dependencies to the\nlatest semver-compatible versions on every run, so freshly released\n`aws-smithy-*` crates (MSRV 1.94.1) broke CI even though nothing in the\ntag changed.\n\n## Fix\n\nAdd `--locked` to all `cargo install ... cargo-openvm` invocations so\nthe Cargo.lock shipped with the `v2.0.0-beta.2-powdr` tag is used.\nVerified locally that `cargo +1.91.1 install --locked ...` passes the\nMSRV/resolution check that CI fails on.\n\nThis also makes the install immune to future dependency releases (the\nexisting 1.91.1 pin comment suggests this has bitten before).\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-authored-by: Claude Fable 5 <noreply@anthropic.com>",
+          "timestamp": "2026-07-08T10:05:35Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/14b3e3053062c8bb510499cbe07763d5065e1f01"
+        },
+        "date": 1784072237214,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 16372018321,
+            "range": "± 909986619",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 41344593431,
+            "range": "± 220606857",
             "unit": "ns/iter"
           }
         ]
