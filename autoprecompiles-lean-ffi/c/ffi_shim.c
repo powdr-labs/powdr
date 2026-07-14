@@ -5,10 +5,12 @@
  *   char *leanr_optimize(const char *input);   // JSON in -> optimized JSON out (malloc'd)
  *   void  leanr_free(char *p);                  // free the returned buffer
  *
- * The Lean runtime is initialized exactly once (pthread_once). All calls are serialized with a
- * global mutex, and calls arriving on a thread other than the one that initialized the runtime
- * register/unregister that thread with the Lean runtime around the call. This makes the shim safe
- * under `cargo test`'s parallel test threads.
+ * The Lean runtime is initialized exactly once (pthread_once). `apc_optimizer_optimize_json` is a
+ * pure `String -> String` with no shared mutable state, and Lean marks all initialization-time
+ * constants persistent (RC-exempt) via `lean_io_mark_end_initialization`, so concurrent calls are
+ * safe and run without a lock. Each calling thread other than the one that ran initialization is
+ * registered with the Lean runtime once (its allocator/thread state), and finalized at thread exit
+ * via a pthread-key destructor.
  */
 #include <lean/lean.h>
 #include <pthread.h>
@@ -30,8 +32,15 @@ extern void lean_initialize_thread(void);
 extern void lean_finalize_thread(void);
 
 static pthread_once_t g_init_once = PTHREAD_ONCE_INIT;
-static pthread_mutex_t g_call_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_t g_init_thread;
+/* Non-NULL thread-specific value marks a foreign thread we registered; its destructor finalizes
+ * the thread with the Lean runtime when the thread exits. */
+static pthread_key_t g_thread_key;
+
+static void finalize_foreign_thread(void *value) {
+    (void)value;
+    lean_finalize_thread();
+}
 
 static void leanr_do_init(void) {
     lean_initialize_runtime_module();
@@ -45,15 +54,17 @@ static void leanr_do_init(void) {
     }
     lean_io_mark_end_initialization();
     g_init_thread = pthread_self();
+    pthread_key_create(&g_thread_key, finalize_foreign_thread);
 }
 
 char *leanr_optimize(const char *input) {
     pthread_once(&g_init_once, leanr_do_init);
-    pthread_mutex_lock(&g_call_lock);
 
-    int foreign = !pthread_equal(pthread_self(), g_init_thread);
-    if (foreign) {
+    /* Register each foreign thread with the runtime once; the pthread-key destructor finalizes it
+     * at thread exit. The init thread is already registered by `lean_initialize_runtime_module`. */
+    if (!pthread_equal(pthread_self(), g_init_thread) && !pthread_getspecific(g_thread_key)) {
         lean_initialize_thread();
+        pthread_setspecific(g_thread_key, (void *)1);
     }
 
     lean_object *in = lean_mk_string(input);        /* owned */
@@ -62,11 +73,6 @@ char *leanr_optimize(const char *input) {
     char *result = strdup(s);
     lean_dec_ref(out);
 
-    if (foreign) {
-        lean_finalize_thread();
-    }
-
-    pthread_mutex_unlock(&g_call_lock);
     return result;
 }
 
