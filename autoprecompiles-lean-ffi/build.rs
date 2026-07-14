@@ -107,18 +107,28 @@ fn main() {
     let archive = out_dir.join("libleanr_all.a");
     let _ = std::fs::remove_file(&archive);
 
-    let runtime_libs = [
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
+    // The Lean runtime + gmp/uv ship as static archives on every platform and are merged here.
+    // The C++ runtime differs: on Linux the toolchain provides static libc++/c++abi/unwind, so we
+    // bundle them too; on macOS those live in the system SDK and are linked dynamically via
+    // `-lc++` (see the sys-lib list below), so they must NOT be part of the merged archive.
+    let mut runtime_libs = vec![
         lib_lean.join("libleancpp.a"),
         lib_lean.join("libLean.a"),
         lib_lean.join("libStd.a"),
         lib_lean.join("libInit.a"),
         lib_lean.join("libleanrt.a"),
-        lib.join("libc++.a"),
-        lib.join("libc++abi.a"),
-        lib.join("libunwind.a"),
         lib.join("libgmp.a"),
         lib.join("libuv.a"),
     ];
+    if target_os != "macos" {
+        runtime_libs.extend([
+            lib.join("libc++.a"),
+            lib.join("libc++abi.a"),
+            lib.join("libunwind.a"),
+        ]);
+    }
 
     let mut mri = String::new();
     mri.push_str(&format!("CREATE {}\n", archive.display()));
@@ -151,8 +161,15 @@ fn main() {
     // --- Emit propagating link directives ------------------------------------
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static=leanr_all");
-    // Remaining dependencies are the system dynamic libraries the Lean runtime needs.
-    for l in ["pthread", "dl", "rt", "m"] {
+    // Remaining dependencies are the system dynamic libraries the Lean runtime needs. On macOS
+    // libc++ (and, transitively, libc++abi + libunwind) come from the system SDK, while pthread/m
+    // live in libSystem and there is no separate rt/dl.
+    let sys_libs: &[&str] = if target_os == "macos" {
+        &["c++"]
+    } else {
+        &["pthread", "dl", "rt", "m"]
+    };
+    for l in sys_libs {
         println!("cargo:rustc-link-lib=dylib={l}");
     }
 
