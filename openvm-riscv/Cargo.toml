@@ -13,6 +13,8 @@ aot = ["powdr-openvm/aot", "powdr-openvm-riscv-hints-circuit/aot"]
 tco = ["powdr-openvm/tco", "powdr-openvm-riscv-hints-circuit/tco"]
 metrics = ["powdr-openvm/metrics"]
 cuda = ["powdr-openvm/cuda"]
+# Forward the Leanr (Lean4) verified optimizer feature; gated at runtime by `POWDR_USE_LEAN_OPTIMIZER`.
+lean-optimizer = ["powdr-openvm/lean-optimizer"]
 
 [dependencies]
 openvm.workspace = true
