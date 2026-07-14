@@ -477,14 +477,23 @@ fn add_guards_constraint<T: FieldElement>(
 
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = add_guards_constraint(*left, is_valid);
-            let right = match op {
-                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => {
-                    Box::new(add_guards_constraint(*right, is_valid))
+            let (left, right) = match op {
+                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => (
+                    // Both sides need to be guarded.
+                    add_guards_constraint(*left, is_valid),
+                    add_guards_constraint(*right, is_valid),
+                ),
+                AlgebraicBinaryOperator::Mul => {
+                    // Only one side needs to be guarded. It does not matter which, but it cannot be
+                    // a constant, because that would increase the degree.
+                    if matches!(*left, AlgebraicExpression::Number(_)) {
+                        (*left, add_guards_constraint(*right, is_valid))
+                    } else {
+                        (add_guards_constraint(*left, is_valid), *right)
+                    }
                 }
-                AlgebraicBinaryOperator::Mul => right,
             };
-            AlgebraicExpression::new_binary(left, op, *right)
+            AlgebraicExpression::new_binary(left, op, right)
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
             let inner = add_guards_constraint(*expr, is_valid);
