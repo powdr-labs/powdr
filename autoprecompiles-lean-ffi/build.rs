@@ -239,7 +239,7 @@ fn main() {
     }
 
     // Rerun if the Lean sources change.
-    for sub in ["Leanr", "Main.lean", "lakefile.toml"] {
+    for sub in ["ApcOptimizer", "Main.lean", "lakefile.toml"] {
         let p: &Path = Path::new(&leanr_dir).as_ref();
         println!("cargo:rerun-if-changed={}", p.join(sub).display());
     }
