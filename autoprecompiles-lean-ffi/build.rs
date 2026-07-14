@@ -2,7 +2,7 @@
 //! the Lean runtime) into the consuming Rust binary.
 //!
 //! Strategy (see the crate docs and the Task-1 PR): `lake build` in the Leanr checkout produces a
-//! native executable and, crucially, a linker response file (`.lake/build/bin/leanr.rsp`) that
+//! native executable and, crucially, a linker response file (`.lake/build/bin/<exe>.rsp`) that
 //! lists every compiled object (`*.c.o.export`, ~1200 of them, including mathlib) and the exact
 //! runtime link flags. We reuse that proven-good recipe: bundle all objects (minus the one
 //! defining Lean's `main`) together with our C shim into a single `libleanr_all.a` (a symbol-
@@ -21,6 +21,9 @@ use std::process::Command;
 /// optimizer, bump `LEANR_REV` here (and refresh the `lean-optimizer` snapshots as needed).
 const LEANR_REPO: &str = "https://github.com/powdr-labs/leanr.git";
 const LEANR_REV: &str = "e10b10262a8dcc5bc1f94d933ea043d0a5bc10fc";
+/// The Lean executable target (`[[lean_exe]]` in Leanr's `lakefile.toml`); its `.rsp` file carries
+/// the object list + runtime link flags we replay. If Leanr renames the exe, bump this.
+const LEANR_EXE: &str = "apc-optimizer";
 
 fn run(cmd: &mut Command) -> String {
     let rendered = format!("{cmd:?}");
@@ -120,9 +123,12 @@ fn main() {
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
 
     // --- Build the Lean side (produces objects + the response file) ----------
-    run(Command::new("lake").current_dir(&leanr_dir).arg("build"));
+    run(Command::new("lake")
+        .current_dir(&leanr_dir)
+        .arg("build")
+        .arg(LEANR_EXE));
 
-    let rsp_path = leanr_dir.join(".lake/build/bin/leanr.rsp");
+    let rsp_path = leanr_dir.join(format!(".lake/build/bin/{LEANR_EXE}.rsp"));
     let rsp = std::fs::read_to_string(&rsp_path)
         .unwrap_or_else(|e| panic!("cannot read {rsp_path:?}: {e}"));
 
