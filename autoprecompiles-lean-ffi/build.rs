@@ -9,10 +9,18 @@
 //! indexed archive resolves the modules' mutual references), then replay the Lean runtime `-l`
 //! flags — all wrapped in one `--start-group` so nothing is missed.
 //!
-//! Set `LEANR_DIR` to the Leanr checkout (defaults to `../leanr`).
+//! Leanr checkout resolution: by default this crate is self-contained — it maintains a managed
+//! clone pinned to `LEANR_REV` under a persistent cache dir, so no local checkout is required.
+//! Set `LEANR_DIR` to point at your own checkout instead (local optimizer development); its git
+//! state is then used verbatim.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Upstream Leanr repository and the exact commit this crate builds against. To move to a newer
+/// optimizer, bump `LEANR_REV` here (and refresh the `lean-optimizer` snapshots as needed).
+const LEANR_REPO: &str = "https://github.com/powdr-labs/leanr.git";
+const LEANR_REV: &str = "e10b10262a8dcc5bc1f94d933ea043d0a5bc10fc";
 
 fn run(cmd: &mut Command) -> String {
     let rendered = format!("{cmd:?}");
@@ -30,18 +38,69 @@ fn run(cmd: &mut Command) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
+/// Resolve the Leanr checkout to build against.
+///
+/// * `LEANR_DIR` set -> use it verbatim (local optimizer development; whatever is checked out
+///   there is built).
+/// * otherwise -> maintain a managed clone pinned to `LEANR_REV`. It lives under a *persistent*
+///   cache dir (`LEANR_CACHE_DIR`, else `$CARGO_HOME/powdr-leanr`, else `$HOME/.cache/powdr-leanr`,
+///   else `OUT_DIR`) rather than `OUT_DIR` itself, so the ~1200 compiled objects (mathlib) survive
+///   `cargo clean` and aren't rebuilt from scratch every time.
+fn resolve_leanr_dir(out_dir: &Path) -> PathBuf {
+    if let Ok(dir) = std::env::var("LEANR_DIR") {
+        let dir = PathBuf::from(dir);
+        return dir
+            .canonicalize()
+            .unwrap_or_else(|e| panic!("LEANR_DIR {dir:?} not found: {e}"));
+    }
+
+    let cache_root = std::env::var("LEANR_CACHE_DIR")
+        .map(PathBuf::from)
+        .or_else(|_| std::env::var("CARGO_HOME").map(|h| PathBuf::from(h).join("powdr-leanr")))
+        .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache/powdr-leanr")))
+        .unwrap_or_else(|_| out_dir.to_path_buf());
+    let checkout = cache_root.join("leanr");
+
+    let git = |args: &[&str]| {
+        let mut c = Command::new("git");
+        c.arg("-C").arg(&checkout).args(args);
+        c
+    };
+
+    if !checkout.join(".git").is_dir() {
+        std::fs::create_dir_all(&cache_root)
+            .unwrap_or_else(|e| panic!("cannot create Leanr cache dir {cache_root:?}: {e}"));
+        run(Command::new("git")
+            .arg("clone")
+            .arg(LEANR_REPO)
+            .arg(&checkout));
+    }
+
+    // Pin to the exact commit. Fetch only when the cache doesn't already contain it.
+    if run(&mut git(&["rev-parse", "HEAD"])) != LEANR_REV {
+        let have_rev = git(&["cat-file", "-e", &format!("{LEANR_REV}^{{commit}}")])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !have_rev {
+            run(&mut git(&["fetch", "origin"]));
+        }
+        run(&mut git(&["checkout", "--detach", LEANR_REV]));
+    }
+
+    checkout
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("Leanr checkout {checkout:?} not found: {e}"))
+}
+
 fn main() {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
-    let leanr_dir = std::env::var("LEANR_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| manifest_dir.join("..").join("..").join("leanr"));
-    let leanr_dir = leanr_dir
-        .canonicalize()
-        .unwrap_or_else(|e| panic!("LEANR_DIR {leanr_dir:?} not found: {e}"));
+    let leanr_dir = resolve_leanr_dir(&out_dir);
 
     println!("cargo:rerun-if-env-changed=LEANR_DIR");
+    println!("cargo:rerun-if-env-changed=LEANR_CACHE_DIR");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=c/ffi_shim.c");
 
