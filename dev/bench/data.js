@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784072247353,
+  "lastUpdate": 1784158928410,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416567,6 +416567,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 41344593431,
             "range": "± 220606857",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Leandro Pacheco",
+            "username": "pacheco",
+            "email": "contact@leandropacheco.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "bcc3e3cba60cd9b02ed43f7784b9266b63fe21e8",
+          "message": "Bench: use APC's own bus map in optimizer benchmark handler (#3791)\n\n## Problem\n\n`bench_optimize` in the optimizer benchmark built the\n`OpenVmBusInteractionHandler` with `::default()`, which hardcodes\n`default_openvm_bus_map()` — in particular the TupleRangeChecker sizes\n`[256, 2048]`. But it passed the *loaded APC's own* `bus_map` to\n`optimize`.\n\nFor the keccak APC these agree. The recently-added **wasm reth APC**\nuses TupleRangeChecker sizes `[256, 4096]`, so the handler and the\noptimizer were describing two different machines — the handler reasoned\nwith a too-tight second-dimension range.\n\n## Fix\n\nBuild the handler from `apc.bus_map`, so handler and optimizer always\nagree regardless of APC origin. This matches:\n- production (`customize_exe.rs`, which uses\n`OpenVmBusInteractionHandler::new(bus_map.clone())` from the real\nconfig), and\n- the existing `test_optimize_reth_op` test.\n\n## Notes\n\n- The wasm APC's new frame-pointer address space (`FP_AS = 5`) was\ninvestigated separately and is handled soundly: the memory optimizer\ntreats `address_space` opaquely, and `handle_memory` only\nbyte-constrains data for address spaces 1/2, leaving AS 5's native field\nelement untouched. No change needed there.\n- The wasm APC currently has no bus-7 (TupleRangeChecker) interactions\nin its input, so the practical effect is limited to\n`batch_make_range_constraints`; this change is primarily about making\nthe benchmark harness consistent and not a misleading template.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-15T12:58:37Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/bcc3e3cba60cd9b02ed43f7784b9266b63fe21e8"
+        },
+        "date": 1784158918444,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 25670455459,
+            "range": "± 1276450310",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 43534936663,
+            "range": "± 474783565",
             "unit": "ns/iter"
           }
         ]
