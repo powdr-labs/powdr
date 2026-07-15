@@ -28,6 +28,10 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
 
+/// Opt-in integration routing `optimize` through the apc-optimizer (Lean) via FFI.
+#[cfg(feature = "lean-optimizer")]
+mod lean;
+
 /// Marker bound for `optimize`'s `BusTypes`. With the `lean-optimizer` feature it requires
 /// `serde::Serialize` (the Lean FFI path serializes the bus map); without the feature it is
 /// vacuous, so the native path imposes no extra bound.
@@ -39,55 +43,6 @@ impl<T: serde::Serialize> OptimizerBusType for T {}
 pub trait OptimizerBusType {}
 #[cfg(not(feature = "lean-optimizer"))]
 impl<T> OptimizerBusType for T {}
-
-/// Returns whether the apc-optimizer (Lean4) verified optimizer should be used instead of the native
-/// Rust optimizer, controlled by the `POWDR_USE_LEAN_OPTIMIZER` environment variable
-/// (`1`/`true`). See `optimize_via_lean`.
-#[cfg(feature = "lean-optimizer")]
-fn lean_optimizer_enabled() -> bool {
-    std::env::var("POWDR_USE_LEAN_OPTIMIZER")
-        .map(|v| v == "1" || v == "true")
-        .unwrap_or(false)
-}
-
-/// The apc-optimizer's `{machine, next_free_id}` FFI result: the optimized machine plus the
-/// allocator cursor advanced past every fresh column id the optimizer assigned.
-#[cfg(feature = "lean-optimizer")]
-#[derive(serde::Deserialize)]
-struct LeanOptimizerResult<T> {
-    machine: SymbolicMachine<T>,
-    next_free_id: u64,
-}
-
-/// Run the apc-optimizer via FFI: serialize `{machine, bus_map, next_free_id}` to the powdr export
-/// JSON, call the Lean static library, and deserialize the `{machine, next_free_id}` result.
-///
-/// `next_free_id` is the caller's next free column id. The optimizer draws the ids of any columns
-/// it introduces (e.g. in the re-encoding pass) starting there, so they never collide with existing
-/// ids, and returns the cursor advanced past them. The caller reseeds its `ColumnAllocator` with the
-/// returned value — no rescanning of the machine required.
-///
-/// Panics (rather than returning the constrained `Error` type) if serialization, the FFI call, or
-/// deserialization fails; with a valid powdr export none of these happen.
-#[cfg(feature = "lean-optimizer")]
-fn optimize_via_lean<T, BusTypes>(
-    machine: &SymbolicMachine<T>,
-    bus_map: &BusMap<BusTypes>,
-    next_free_id: u64,
-) -> (SymbolicMachine<T>, u64)
-where
-    T: FieldElement,
-    BusTypes: serde::Serialize,
-{
-    let input =
-        serde_json::json!({ "machine": machine, "bus_map": bus_map, "next_free_id": next_free_id });
-    let input_str = serde_json::to_string(&input).expect("serializing machine for Lean FFI");
-    let output_str = powdr_autoprecompiles_lean_ffi::optimize_json(&input_str)
-        .unwrap_or_else(|e| panic!("apc-optimizer FFI failed: {e}"));
-    let result: LeanOptimizerResult<T> = serde_json::from_str(&output_str)
-        .unwrap_or_else(|e| panic!("deserializing apc-optimizer output failed: {e}"));
-    (result.machine, result.next_free_id)
-}
 
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
@@ -106,17 +61,12 @@ where
     BusTypes: PartialEq + Eq + Clone + Display + OptimizerBusType,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
-    // Optional drop-in (feature `lean-optimizer`, env `POWDR_USE_LEAN_OPTIMIZER`): delegate to the
-    // apc-optimizer (the Lean4 verified optimizer) via FFI, bypassing the whole native pipeline.
-    // We pass the allocator's next free id so the optimizer draws the ids of any columns it
-    // introduces (e.g. in the re-encoding pass) from there, and reseed the allocator with the
-    // cursor it returns — so later stages (e.g. `add_guards`) issue fresh, non-colliding ids. The
-    // allocator's per-instruction `subs` (populated by `statements_to_symbolic_machine`) are kept,
-    // as witgen relies on them to map original columns to APC columns.
+    // Opt-in drop-in: delegate to the apc-optimizer via FFI, reseeding the allocator from the
+    // cursor it returns while preserving its per-instruction `subs` (needed by witgen).
     #[cfg(feature = "lean-optimizer")]
-    if lean_optimizer_enabled() {
+    if lean::enabled() {
         let (optimized, next_free_id) =
-            optimize_via_lean(&machine, bus_map, column_allocator.next_poly_id);
+            lean::optimize(&machine, bus_map, column_allocator.next_poly_id);
         column_allocator.next_poly_id = next_free_id;
         return Ok((optimized, column_allocator));
     }
