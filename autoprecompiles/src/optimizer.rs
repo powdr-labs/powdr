@@ -49,8 +49,6 @@ where
     BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
-    // Opt-in drop-in: delegate to the apc-optimizer via FFI, reseeding the allocator from the
-    // cursor it returns while preserving its per-instruction `subs` (needed by witgen).
     #[cfg(feature = "lean-optimizer")]
     if lean::enabled() {
         let (optimized, next_free_id) =
