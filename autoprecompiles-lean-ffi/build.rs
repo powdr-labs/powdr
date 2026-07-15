@@ -1,29 +1,29 @@
-//! Build script: compile the Leanr optimizer + C shim into one static archive and link it (plus
+//! Build script: compile the apc-optimizer + C shim into one static archive and link it (plus
 //! the Lean runtime) into the consuming Rust binary.
 //!
-//! Strategy (see the crate docs and the Task-1 PR): `lake build` in the Leanr checkout produces a
+//! Strategy (see the crate docs and the Task-1 PR): `lake build` in the apc-optimizer checkout produces a
 //! native executable and, crucially, a linker response file (`.lake/build/bin/<exe>.rsp`) that
 //! lists every compiled object (`*.c.o.export`, ~1200 of them, including mathlib) and the exact
 //! runtime link flags. We reuse that proven-good recipe: bundle all objects (minus the one
-//! defining Lean's `main`) together with our C shim into a single `libleanr_all.a` (a symbol-
+//! defining Lean's `main`) together with our C shim into a single `libapc_optimizer_all.a` (a symbol-
 //! indexed archive resolves the modules' mutual references), then replay the Lean runtime `-l`
 //! flags — all wrapped in one `--start-group` so nothing is missed.
 //!
-//! Leanr checkout resolution: by default this crate is self-contained — it maintains a managed
-//! clone pinned to `LEANR_REV` under a persistent cache dir, so no local checkout is required.
-//! Set `LEANR_DIR` to point at your own checkout instead (local optimizer development); its git
+//! apc-optimizer checkout resolution: by default this crate is self-contained — it maintains a managed
+//! clone pinned to `APC_OPTIMIZER_REV` under a persistent cache dir, so no local checkout is required.
+//! Set `APC_OPTIMIZER_DIR` to point at your own checkout instead (local optimizer development); its git
 //! state is then used verbatim.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Upstream Leanr repository and the exact commit this crate builds against. To move to a newer
-/// optimizer, bump `LEANR_REV` here (and refresh the `lean-optimizer` snapshots as needed).
-const LEANR_REPO: &str = "https://github.com/powdr-labs/leanr.git";
-const LEANR_REV: &str = "e10b10262a8dcc5bc1f94d933ea043d0a5bc10fc";
-/// The Lean executable target (`[[lean_exe]]` in Leanr's `lakefile.toml`); its `.rsp` file carries
-/// the object list + runtime link flags we replay. If Leanr renames the exe, bump this.
-const LEANR_EXE: &str = "apc-optimizer";
+/// Upstream apc-optimizer repository and the exact commit this crate builds against. To move to a newer
+/// optimizer, bump `APC_OPTIMIZER_REV` here (and refresh the `lean-optimizer` snapshots as needed).
+const APC_OPTIMIZER_REPO: &str = "https://github.com/powdr-labs/apc-optimizer.git";
+const APC_OPTIMIZER_REV: &str = "e10b10262a8dcc5bc1f94d933ea043d0a5bc10fc";
+/// The Lean executable target (`[[lean_exe]]` in apc-optimizer's `lakefile.toml`); its `.rsp` file carries
+/// the object list + runtime link flags we replay. If apc-optimizer renames the exe, bump this.
+const APC_OPTIMIZER_EXE: &str = "apc-optimizer";
 
 fn run(cmd: &mut Command) -> String {
     let rendered = format!("{cmd:?}");
@@ -41,28 +41,32 @@ fn run(cmd: &mut Command) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
-/// Resolve the Leanr checkout to build against.
+/// Resolve the apc-optimizer checkout to build against.
 ///
-/// * `LEANR_DIR` set -> use it verbatim (local optimizer development; whatever is checked out
+/// * `APC_OPTIMIZER_DIR` set -> use it verbatim (local optimizer development; whatever is checked out
 ///   there is built).
-/// * otherwise -> maintain a managed clone pinned to `LEANR_REV`. It lives under a *persistent*
-///   cache dir (`LEANR_CACHE_DIR`, else `$CARGO_HOME/powdr-leanr`, else `$HOME/.cache/powdr-leanr`,
+/// * otherwise -> maintain a managed clone pinned to `APC_OPTIMIZER_REV`. It lives under a *persistent*
+///   cache dir (`APC_OPTIMIZER_CACHE_DIR`, else `$CARGO_HOME/powdr-apc-optimizer`, else `$HOME/.cache/powdr-apc-optimizer`,
 ///   else `OUT_DIR`) rather than `OUT_DIR` itself, so the ~1200 compiled objects (mathlib) survive
 ///   `cargo clean` and aren't rebuilt from scratch every time.
-fn resolve_leanr_dir(out_dir: &Path) -> PathBuf {
-    if let Ok(dir) = std::env::var("LEANR_DIR") {
+fn resolve_apc_optimizer_dir(out_dir: &Path) -> PathBuf {
+    if let Ok(dir) = std::env::var("APC_OPTIMIZER_DIR") {
         let dir = PathBuf::from(dir);
         return dir
             .canonicalize()
-            .unwrap_or_else(|e| panic!("LEANR_DIR {dir:?} not found: {e}"));
+            .unwrap_or_else(|e| panic!("APC_OPTIMIZER_DIR {dir:?} not found: {e}"));
     }
 
-    let cache_root = std::env::var("LEANR_CACHE_DIR")
+    let cache_root = std::env::var("APC_OPTIMIZER_CACHE_DIR")
         .map(PathBuf::from)
-        .or_else(|_| std::env::var("CARGO_HOME").map(|h| PathBuf::from(h).join("powdr-leanr")))
-        .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache/powdr-leanr")))
+        .or_else(|_| {
+            std::env::var("CARGO_HOME").map(|h| PathBuf::from(h).join("powdr-apc-optimizer"))
+        })
+        .or_else(|_| {
+            std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache/powdr-apc-optimizer"))
+        })
         .unwrap_or_else(|_| out_dir.to_path_buf());
-    let checkout = cache_root.join("leanr");
+    let checkout = cache_root.join("apc-optimizer");
 
     let git = |args: &[&str]| {
         let mut c = Command::new("git");
@@ -71,47 +75,48 @@ fn resolve_leanr_dir(out_dir: &Path) -> PathBuf {
     };
 
     if !checkout.join(".git").is_dir() {
-        std::fs::create_dir_all(&cache_root)
-            .unwrap_or_else(|e| panic!("cannot create Leanr cache dir {cache_root:?}: {e}"));
+        std::fs::create_dir_all(&cache_root).unwrap_or_else(|e| {
+            panic!("cannot create apc-optimizer cache dir {cache_root:?}: {e}")
+        });
         run(Command::new("git")
             .arg("clone")
-            .arg(LEANR_REPO)
+            .arg(APC_OPTIMIZER_REPO)
             .arg(&checkout));
     }
 
     // Pin to the exact commit. Fetch only when the cache doesn't already contain it.
-    if run(&mut git(&["rev-parse", "HEAD"])) != LEANR_REV {
-        let have_rev = git(&["cat-file", "-e", &format!("{LEANR_REV}^{{commit}}")])
+    if run(&mut git(&["rev-parse", "HEAD"])) != APC_OPTIMIZER_REV {
+        let have_rev = git(&["cat-file", "-e", &format!("{APC_OPTIMIZER_REV}^{{commit}}")])
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false);
         if !have_rev {
             run(&mut git(&["fetch", "origin"]));
         }
-        run(&mut git(&["checkout", "--detach", LEANR_REV]));
+        run(&mut git(&["checkout", "--detach", APC_OPTIMIZER_REV]));
     }
 
     checkout
         .canonicalize()
-        .unwrap_or_else(|e| panic!("Leanr checkout {checkout:?} not found: {e}"))
+        .unwrap_or_else(|e| panic!("apc-optimizer checkout {checkout:?} not found: {e}"))
 }
 
 fn main() {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
-    let leanr_dir = resolve_leanr_dir(&out_dir);
+    let apc_optimizer_dir = resolve_apc_optimizer_dir(&out_dir);
 
-    println!("cargo:rerun-if-env-changed=LEANR_DIR");
-    println!("cargo:rerun-if-env-changed=LEANR_CACHE_DIR");
+    println!("cargo:rerun-if-env-changed=APC_OPTIMIZER_DIR");
+    println!("cargo:rerun-if-env-changed=APC_OPTIMIZER_CACHE_DIR");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=c/ffi_shim.c");
 
     // --- Toolchain paths -----------------------------------------------------
-    // Resolve the toolchain *from the Leanr checkout* so we match its `lean-toolchain` pin (the
+    // Resolve the toolchain *from the apc-optimizer checkout* so we match its `lean-toolchain` pin (the
     // objects must be linked with the exact runtime they were compiled against).
     let prefix = PathBuf::from(run(Command::new("lean")
-        .current_dir(&leanr_dir)
+        .current_dir(&apc_optimizer_dir)
         .arg("--print-prefix")));
     let include_dir = prefix.join("include");
     let lib_lean = prefix.join("lib").join("lean");
@@ -124,17 +129,17 @@ fn main() {
 
     // --- Build the Lean side (produces objects + the response file) ----------
     run(Command::new("lake")
-        .current_dir(&leanr_dir)
+        .current_dir(&apc_optimizer_dir)
         .arg("build")
-        .arg(LEANR_EXE));
+        .arg(APC_OPTIMIZER_EXE));
 
-    let rsp_path = leanr_dir.join(format!(".lake/build/bin/{LEANR_EXE}.rsp"));
+    let rsp_path = apc_optimizer_dir.join(format!(".lake/build/bin/{APC_OPTIMIZER_EXE}.rsp"));
     let rsp = std::fs::read_to_string(&rsp_path)
         .unwrap_or_else(|e| panic!("cannot read {rsp_path:?}: {e}"));
 
     // Objects are one-per-line, double-quoted, ending in `.c.o.export`. Exclude the top-level
     // `Main.c.o.export` (it defines Lean's `main`, which would clash with Rust's).
-    let main_obj = leanr_dir.join(".lake/build/ir/Main.c.o.export");
+    let main_obj = apc_optimizer_dir.join(".lake/build/ir/Main.c.o.export");
     let objects: Vec<PathBuf> = rsp
         .lines()
         .map(|l| l.trim().trim_matches('"'))
@@ -169,7 +174,7 @@ fn main() {
     // archive: a `.a` with a symbol index is resolved multi-pass by the linker, and pulling it in
     // via a propagating `rustc-link-lib=static` links only the members actually referenced (so it
     // coexists with Rust's own libunwind etc.).
-    let archive = out_dir.join("libleanr_all.a");
+    let archive = out_dir.join("libapc_optimizer_all.a");
     let _ = std::fs::remove_file(&archive);
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -207,7 +212,7 @@ fn main() {
     }
     mri.push_str("SAVE\nEND\n");
 
-    let mri_path = out_dir.join("leanr_all.mri");
+    let mri_path = out_dir.join("apc_optimizer_all.mri");
     std::fs::write(&mri_path, &mri).unwrap();
     let out = Command::new(&llvm_ar)
         .arg("-M")
@@ -225,7 +230,7 @@ fn main() {
 
     // --- Emit propagating link directives ------------------------------------
     println!("cargo:rustc-link-search=native={}", out_dir.display());
-    println!("cargo:rustc-link-lib=static=leanr_all");
+    println!("cargo:rustc-link-lib=static=apc_optimizer_all");
     // Remaining dependencies are the system dynamic libraries the Lean runtime needs. On macOS
     // libc++ (and, transitively, libc++abi + libunwind) come from the system SDK, while pthread/m
     // live in libSystem and there is no separate rt/dl.
@@ -240,7 +245,7 @@ fn main() {
 
     // Rerun if the Lean sources change.
     for sub in ["ApcOptimizer", "Main.lean", "lakefile.toml"] {
-        let p: &Path = Path::new(&leanr_dir).as_ref();
+        let p: &Path = Path::new(&apc_optimizer_dir).as_ref();
         println!("cargo:rerun-if-changed={}", p.join(sub).display());
     }
 }
