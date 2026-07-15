@@ -20,7 +20,7 @@ use std::process::Command;
 /// Upstream apc-optimizer repository and the exact commit this crate builds against. To move to a newer
 /// optimizer, bump `APC_OPTIMIZER_REV` here (and refresh the `lean-optimizer` snapshots as needed).
 const APC_OPTIMIZER_REPO: &str = "https://github.com/powdr-labs/apc-optimizer.git";
-const APC_OPTIMIZER_REV: &str = "f282e671fbc2b873b2b4e5d695a46ddd1f13ec89";
+const APC_OPTIMIZER_REV: &str = "82205ee89a3faae85833350bcadf2e079a90d125";
 /// The Lean executable target (`[[lean_exe]]` in apc-optimizer's `lakefile.toml`); its `.rsp` file carries
 /// the object list + runtime link flags we replay. If apc-optimizer renames the exe, bump this.
 const APC_OPTIMIZER_EXE: &str = "apc-optimizer";

@@ -32,19 +32,30 @@ fn roundtrip(fixture: &str) {
     let machine: SymbolicMachine<BabyBearField> = apc.apc.machine;
     let bus_map = apc.bus_map;
 
-    let input = serde_json::json!({ "machine": &machine, "bus_map": &bus_map });
+    // The FFI requires `next_free_id`: the id from which the optimizer draws any columns it
+    // introduces. Any value above every existing column id is valid.
+    let next_free_id = machine
+        .main_columns()
+        .map(|c| c.id)
+        .max()
+        .map_or(0, |m| m + 1);
+    let input = serde_json::json!({ "machine": &machine, "bus_map": &bus_map, "next_free_id": next_free_id });
     let input_str = serde_json::to_string(&input).unwrap();
 
     let output_str = powdr_autoprecompiles_lean_ffi::optimize_json(&input_str)
         .unwrap_or_else(|e| panic!("Lean FFI failed for {fixture}: {e}"));
 
-    // The core assertion: the Lean output deserializes into a SymbolicMachine.
-    let optimized: SymbolicMachine<BabyBearField> = serde_json::from_str(&output_str)
-        .unwrap_or_else(|e| panic!("deserializing Lean output for {fixture} failed: {e}"));
+    // The Lean FFI returns `{machine, next_free_id}` (see apc-optimizer#130); the core assertion is
+    // that the wrapped machine deserializes into a SymbolicMachine.
+    let output: serde_json::Value = serde_json::from_str(&output_str)
+        .unwrap_or_else(|e| panic!("parsing Lean output for {fixture} failed: {e}"));
+    let optimized: SymbolicMachine<BabyBearField> =
+        serde_json::from_value(output["machine"].clone())
+            .unwrap_or_else(|e| panic!("deserializing Lean machine for {fixture} failed: {e}"));
 
     // The Lean optimizer may emit `derived_columns` (witgen hints for the witness columns it
     // introduces, e.g. keccak's re-encoding pass). Every such entry is a freshly introduced column,
-    // so `is_new` holds; the exact count is snapshotted in `optimizer.rs`.
+    // so `is_new` holds.
     for dc in &optimized.derived_columns {
         assert!(
             dc.is_new,
