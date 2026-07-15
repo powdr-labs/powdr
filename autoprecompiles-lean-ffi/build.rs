@@ -41,6 +41,17 @@ fn run(cmd: &mut Command) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
+/// Fail early with an actionable message if a required build tool is missing on PATH, rather than
+/// panicking with a raw spawn error deep in the build (and only after the slow apc-optimizer clone).
+fn require_tool(tool: &str, install_hint: &str) {
+    if Command::new(tool).arg("--version").output().is_err() {
+        panic!(
+            "`{tool}` is required to build powdr-autoprecompiles-lean-ffi (the `lean-optimizer` \
+             feature) but was not found on PATH. {install_hint}"
+        );
+    }
+}
+
 /// Resolve the apc-optimizer checkout to build against.
 ///
 /// * `APC_OPTIMIZER_DIR` set -> use it verbatim (local optimizer development; whatever is checked out
@@ -104,6 +115,16 @@ fn resolve_apc_optimizer_dir(out_dir: &Path) -> PathBuf {
 fn main() {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+
+    // Preflight the required tools up front (before the slow clone below) so a missing Lean
+    // toolchain fails with an actionable message instead of a raw spawn error. `lean`/`lake` come
+    // from elan; `git` is needed to fetch the managed apc-optimizer checkout.
+    let lean_hint =
+        "Install the Lean toolchain via elan (https://github.com/leanprover/elan), which provides \
+         `lean` and `lake`.";
+    require_tool("lean", lean_hint);
+    require_tool("lake", lean_hint);
+    require_tool("git", "Install git and re-run.");
 
     let apc_optimizer_dir = resolve_apc_optimizer_dir(&out_dir);
 
