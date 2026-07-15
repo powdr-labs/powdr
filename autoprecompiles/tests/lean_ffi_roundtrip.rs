@@ -64,12 +64,16 @@ fn roundtrip(fixture: &str) {
     }
     // The optimizer reduces size; the result should be non-empty and no larger than the input.
     assert!(
-        optimized.constraints.len() <= machine.constraints.len(),
-        "constraints grew for {fixture}"
+        optimized.main_columns().count() <= machine.main_columns().count(),
+        "bus interactions grew for {fixture}"
     );
     assert!(
         optimized.bus_interactions.len() <= machine.bus_interactions.len(),
         "bus interactions grew for {fixture}"
+    );
+    assert!(
+        optimized.constraints.len() <= machine.constraints.len(),
+        "constraints grew for {fixture}"
     );
 
     // Reseeding the allocator from the Lean output must not panic (ids are well-formed).
