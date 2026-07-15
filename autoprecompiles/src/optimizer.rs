@@ -28,6 +28,10 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
 
+/// Opt-in integration routing `optimize` through the apc-optimizer (Lean) via FFI.
+#[cfg(feature = "lean-optimizer")]
+mod lean;
+
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
@@ -42,9 +46,19 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
 where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
-    BusTypes: PartialEq + Eq + Clone + Display,
+    BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
+    // Opt-in drop-in: delegate to the apc-optimizer via FFI, reseeding the allocator from the
+    // cursor it returns while preserving its per-instruction `subs` (needed by witgen).
+    #[cfg(feature = "lean-optimizer")]
+    if lean::enabled() {
+        let (optimized, next_free_id) =
+            lean::optimize(&machine, bus_map, column_allocator.next_poly_id);
+        column_allocator.next_poly_id = next_free_id;
+        return Ok((optimized, column_allocator));
+    }
+
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {

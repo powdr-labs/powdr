@@ -40,7 +40,7 @@ fn bench_optimize(c: &mut Criterion, group_name: &str, apc_path: &str) {
             |(machine, column_allocator)| {
                 optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
                     black_box(machine),
-                    OpenVmBusInteractionHandler::default(),
+                    OpenVmBusInteractionHandler::new(apc.bus_map.clone()),
                     DEFAULT_DEGREE_BOUND,
                     &apc.bus_map,
                     column_allocator,
