@@ -17,6 +17,8 @@ enum OpCode : uint32_t {
   OP_MUL = 4, // Multiply the top two values on the stack.
   OP_NEG = 5, // Negate the top value on the stack.
   OP_INV_OR_ZERO = 6, // Invert the top value on the stack if it is not zero, otherwise pop and push zero.
+  OP_JMP_IF_NONZERO = 7, // Pop the top value; if it is nonzero, jump `ip` to the following target (an index into this expression). Used to lower `IfEqZero`.
+  OP_JMP = 8, // Unconditionally jump `ip` to the following target (an index into this expression).
 };
 
 static constexpr int STACK_CAPACITY = 16;
@@ -77,6 +79,18 @@ __device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
         const Fp a = stack_pop(stack, sp);
         const Fp out = (a == Fp::zero()) ? Fp::zero() : inv(a);
         stack_push(stack, sp, out);
+        break;
+      }
+      case OP_JMP_IF_NONZERO: {
+        const uint32_t target = expr[ip++];
+        const Fp c = stack_pop(stack, sp);
+        if (!(c == Fp::zero())) {
+          ip = target;
+        }
+        break;
+      }
+      case OP_JMP: {
+        ip = expr[ip];
         break;
       }
       default: {

@@ -144,6 +144,8 @@ pub enum OpCode {
     Mul = 4,     // Multiply the top two values on the stack.
     Neg = 5,     // Negate the top value on the stack.
     InvOrZero = 6, // Invert the top value on the stack if it is not zero, otherwise pop and push zero.
+    JmpIfNonzero = 7, // Pop the top value; if nonzero, jump to the following target index. Lowers `IfEqZero`.
+    Jmp = 8,          // Unconditionally jump to the following target index.
 }
 
 /// GPU device representation of a bus interaction.

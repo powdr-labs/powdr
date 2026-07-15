@@ -7,7 +7,7 @@ use openvm_circuit::{
 };
 use openvm_circuit_primitives::Chip;
 use openvm_cuda_backend::base::DeviceMatrix;
-use openvm_cuda_common::copy::MemCopyH2D;
+use openvm_cuda_common::{copy::cuda_memcpy, copy::MemCopyH2D};
 use openvm_stark_backend::{
     p3_field::PrimeField32,
     prover::{AirProvingContext, ProverBackend},
@@ -96,14 +96,61 @@ fn emit_expr_span(
     ExprSpan { off, len }
 }
 
-/// Compile derived columns to GPU bytecode according to input order.
+/// Compile one `ComputationMethod` into stack-machine bytecode appended to `bytecode`, recursing
+/// through nested `IfEqZero` methods. `off` is the absolute start of the enclosing derived column's
+/// span; jump targets are emitted relative to it (the VM indexes each expression from its span
+/// start). `IfEqZero(cond, then, else)` lowers to short-circuit control flow so that, per row, only
+/// the taken branch executes:
+///   «cond»  JMP_IF_NONZERO else  «then»  JMP end  else: «else»  end:
+/// (The trees are deep — up to ~16 nested in practice — so a branchless `cond*then + (1-cond)*else`
+/// select would evaluate the whole tree every row and overflow the evaluator's fixed stack.)
+fn emit_method(
+    bytecode: &mut Vec<u32>,
+    off: usize,
+    method: &ComputationMethod<BabyBear, AlgebraicExpression<BabyBear>>,
+    id_to_slot: &BTreeMap<u64, usize>,
+    apc_height: usize,
+) {
+    match method {
+        ComputationMethod::Constant(c) => {
+            bytecode.push(OpCode::PushConst as u32);
+            bytecode.push(c.as_canonical_u32());
+        }
+        ComputationMethod::QuotientOrZero(e1, e2) => {
+            // Invert denominator (or use zero), then multiply with numerator.
+            emit_expr(bytecode, e2, id_to_slot, apc_height);
+            bytecode.push(OpCode::InvOrZero as u32);
+            emit_expr(bytecode, e1, id_to_slot, apc_height);
+            bytecode.push(OpCode::Mul as u32);
+        }
+        ComputationMethod::IfEqZero(cond, then_method, else_method) => {
+            emit_expr(bytecode, cond, id_to_slot, apc_height);
+            bytecode.push(OpCode::JmpIfNonzero as u32);
+            let else_target_operand = bytecode.len();
+            bytecode.push(0); // patched below to the `else`-block offset
+            emit_method(bytecode, off, then_method, id_to_slot, apc_height);
+            bytecode.push(OpCode::Jmp as u32);
+            let end_target_operand = bytecode.len();
+            bytecode.push(0); // patched below to the `end` offset
+                              // `else` block begins here (after the unconditional-jump operand).
+            bytecode[else_target_operand] = (bytecode.len() - off) as u32;
+            emit_method(bytecode, off, else_method, id_to_slot, apc_height);
+            bytecode[end_target_operand] = (bytecode.len() - off) as u32;
+        }
+    }
+}
+
+/// Compile derived columns to GPU bytecode according to input order. `id_to_slot` maps every poly
+/// id a derived method may reference — both surviving APC columns and the "removed" columns the
+/// optimizer substituted out (materialized into scratch slots of the trace buffer) — to its column
+/// index, so `emit_expr`'s `PushApc` reads either uniformly.
 fn compile_derived_to_gpu(
     derived_columns: &[DerivedVariable<
         BabyBear,
         AlgebraicReference,
         AlgebraicExpression<BabyBear>,
     >],
-    apc_poly_id_to_index: &BTreeMap<u64, usize>,
+    id_to_slot: &BTreeMap<u64, usize>,
     apc_height: usize,
 ) -> (Vec<DerivedExprSpec>, Vec<u32>) {
     let mut specs = Vec::with_capacity(derived_columns.len());
@@ -118,29 +165,22 @@ fn compile_derived_to_gpu(
         if !is_new {
             continue;
         }
-        let apc_col_index = apc_poly_id_to_index[&variable.id];
-        let off = bytecode.len() as u32;
-        match computation_method {
-            ComputationMethod::Constant(c) => {
-                // Encode constant as an expression
-                bytecode.push(OpCode::PushConst as u32);
-                bytecode.push(c.as_canonical_u32());
-            }
-            ComputationMethod::QuotientOrZero(e1, e2) => {
-                // Invert denominator (or use zero), then multiply with numerator.
-                emit_expr(&mut bytecode, e2, apc_poly_id_to_index, apc_height);
-                bytecode.push(OpCode::InvOrZero as u32);
-                emit_expr(&mut bytecode, e1, apc_poly_id_to_index, apc_height);
-                bytecode.push(OpCode::Mul as u32);
-            }
-            ComputationMethod::IfEqZero(_, _, _) => {
-                unreachable!("IfEqZero not expected for new columns")
-            }
-        }
-        let len = (bytecode.len() as u32) - off;
+        let apc_col_index = id_to_slot[&variable.id];
+        let off = bytecode.len();
+        emit_method(
+            &mut bytecode,
+            off,
+            computation_method,
+            id_to_slot,
+            apc_height,
+        );
+        let len = (bytecode.len() - off) as u32;
         specs.push(DerivedExprSpec {
             col_base: (apc_col_index * apc_height) as u64,
-            span: ExprSpan { off, len },
+            span: ExprSpan {
+                off: off as u32,
+                len,
+            },
         });
     }
 
@@ -268,11 +308,31 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             .map(|(index, c)| (c.id, index))
             .collect();
 
+        // A derived column's computation method may reference a column the optimizer substituted
+        // out of the circuit (absent from `main_columns()`), whose value still lives in the
+        // original instruction trace. We give each such "removed" column a scratch slot appended
+        // after the committed columns and fill it exactly like a surviving column (via a `Subst`);
+        // the derived-expression VM then reads it through the ordinary `PushApc`. The scratch slots
+        // are dropped before the trace is committed (see the end of this function). In the native
+        // optimizer path there are none, so `id_to_slot == apc_poly_id_to_index` and nothing below
+        // changes. (Any retained sub whose target is absent from `main_columns()` is, by
+        // construction of `Apc::new`, exactly such a removed-but-referenced column.)
+        let committed_width = apc_poly_id_to_index.len();
+        let mut id_to_slot = apc_poly_id_to_index.clone();
+        for subs in self.apc.subs() {
+            for sub in subs {
+                let next_slot = id_to_slot.len();
+                id_to_slot.entry(sub.apc_poly_id).or_insert(next_slot);
+            }
+        }
+        let total_width = id_to_slot.len();
+
         // allocate for apc trace (zero-initialized so columns not covered
-        // by substitutions or derived expressions default to zero, matching the CPU path)
-        let width = apc_poly_id_to_index.len();
+        // by substitutions or derived expressions default to zero, matching the CPU path).
+        // Width includes the removed-column scratch slots; only the first `committed_width`
+        // columns are committed.
         let height = next_power_of_two_or_zero(num_apc_calls);
-        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, width);
+        let mut output = DeviceMatrix::<BabyBear>::with_capacity(height, total_width);
         output.buffer().fill_zero().unwrap();
 
         // Prepare `OriginalAir` and `Subst` arrays
@@ -311,7 +371,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                                         air_index: air_index as i32,
                                         col: sub.original_poly_index as i32,
                                         row: row as i32,
-                                        apc_col: apc_poly_id_to_index[&sub.apc_poly_id] as i32,
+                                        // `id_to_slot` covers both surviving columns and removed
+                                        // columns (the latter mapped to scratch slots); a plain
+                                        // `apc_poly_id_to_index` lookup would panic on a removed
+                                        // sub target.
+                                        apc_col: id_to_slot[&sub.apc_poly_id] as i32,
                                     })
                             })
                             .collect();
@@ -341,11 +405,8 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         cuda_abi::apc_tracegen(&mut output, airs, substitutions, num_apc_calls).unwrap();
 
         // Apply derived columns using the GPU expression evaluator
-        let (derived_specs, derived_bc) = compile_derived_to_gpu(
-            &self.apc.machine.derived_columns,
-            &apc_poly_id_to_index,
-            height,
-        );
+        let (derived_specs, derived_bc) =
+            compile_derived_to_gpu(&self.apc.machine.derived_columns, &id_to_slot, height);
         // In practice `d_specs` is never empty, because we will always have `is_valid`
         let d_specs = derived_specs.to_device().unwrap();
         let d_bc = derived_bc.to_device().unwrap();
@@ -404,7 +465,27 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         )
         .unwrap();
 
-        Some(output)
+        // Commit only the contiguous column-major prefix [0, committed_width) — the surviving +
+        // derived columns. The removed-column scratch slots (if any) live in the tail and are
+        // dropped here so the committed trace width matches the APC AIR. `DeviceMatrix` requires
+        // its buffer length to equal `height * width`, so we cannot narrow the reported width in
+        // place; we copy the prefix into a right-sized matrix. The kernels above and this copy all
+        // run on the per-thread default stream (the CUDA build uses `--default-stream=per-thread`),
+        // so the copy is serialized after the kernels and before the prover's reads with no
+        // explicit synchronization — exactly as the no-scratch fast path returns `output` directly.
+        if total_width == committed_width {
+            return Some(output);
+        }
+        let committed = DeviceMatrix::<BabyBear>::with_capacity(height, committed_width);
+        unsafe {
+            cuda_memcpy::<true, true>(
+                committed.buffer().as_mut_raw_ptr(),
+                output.buffer().as_raw_ptr(),
+                committed_width * height * std::mem::size_of::<BabyBear>(),
+            )
+        }
+        .unwrap();
+        Some(committed)
     }
 }
 
