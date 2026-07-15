@@ -28,6 +28,57 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
 
+/// Marker bound for `optimize`'s `BusTypes`. With the `lean-optimizer` feature it requires
+/// `serde::Serialize` (the Lean FFI path serializes the bus map); without the feature it is
+/// vacuous, so the native path imposes no extra bound.
+#[cfg(feature = "lean-optimizer")]
+pub trait OptimizerBusType: serde::Serialize {}
+#[cfg(feature = "lean-optimizer")]
+impl<T: serde::Serialize> OptimizerBusType for T {}
+#[cfg(not(feature = "lean-optimizer"))]
+pub trait OptimizerBusType {}
+#[cfg(not(feature = "lean-optimizer"))]
+impl<T> OptimizerBusType for T {}
+
+/// Returns whether the apc-optimizer (Lean4) verified optimizer should be used instead of the native
+/// Rust optimizer, controlled by the `POWDR_USE_LEAN_OPTIMIZER` environment variable
+/// (`1`/`true`). See `optimize_via_lean`.
+#[cfg(feature = "lean-optimizer")]
+fn lean_optimizer_enabled() -> bool {
+    std::env::var("POWDR_USE_LEAN_OPTIMIZER")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+/// Run the apc-optimizer via FFI: serialize `{machine, bus_map}` to the powdr export JSON, call
+/// the Lean static library, and deserialize the optimized `SymbolicMachine` back.
+///
+/// The Lean optimizer can introduce new witness columns (e.g. the re-encoding pass); these are
+/// exported both as `derived_columns` (with a `ComputationMethod` telling witgen how to fill them)
+/// and, where they occur, in the constraints, all carrying fresh poly ids strictly above every
+/// existing id. The deserialized machine preserves those `derived_columns`, and callers must
+/// reseed their `ColumnAllocator` from the returned machine (see `raise_next_poly_id_above_machine`,
+/// which accounts for derived-column ids too).
+///
+/// Panics (rather than returning the constrained `Error` type) if serialization, the FFI call, or
+/// deserialization fails; with a valid powdr export none of these happen.
+#[cfg(feature = "lean-optimizer")]
+fn optimize_via_lean<T, BusTypes>(
+    machine: &SymbolicMachine<T>,
+    bus_map: &BusMap<BusTypes>,
+) -> SymbolicMachine<T>
+where
+    T: FieldElement,
+    BusTypes: serde::Serialize,
+{
+    let input = serde_json::json!({ "machine": machine, "bus_map": bus_map });
+    let input_str = serde_json::to_string(&input).expect("serializing machine for Lean FFI");
+    let output_str = powdr_autoprecompiles_lean_ffi::optimize_json(&input_str)
+        .unwrap_or_else(|e| panic!("apc-optimizer FFI failed: {e}"));
+    serde_json::from_str(&output_str)
+        .unwrap_or_else(|e| panic!("deserializing apc-optimizer output failed: {e}"))
+}
+
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
@@ -42,9 +93,26 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
 where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
-    BusTypes: PartialEq + Eq + Clone + Display,
+    BusTypes: PartialEq + Eq + Clone + Display + OptimizerBusType,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
+    // Optional drop-in (feature `lean-optimizer`, env `POWDR_USE_LEAN_OPTIMIZER`): delegate to the
+    // apc-optimizer (the Lean4 verified optimizer) via FFI. It bypasses the whole native pipeline. Unlike the native
+    // path, the Lean optimizer *does* emit `derived_columns` (witgen hints for the witness columns
+    // it introduces, e.g. in the re-encoding pass); the deserialized machine keeps them.
+    #[cfg(feature = "lean-optimizer")]
+    if lean_optimizer_enabled() {
+        let optimized = optimize_via_lean(&machine, bus_map);
+        // Preserve the input allocator's per-instruction `subs` (populated by
+        // `statements_to_symbolic_machine`, one entry per instruction) — witgen relies on it to map
+        // original columns to APC columns (see `record_arena_dimension_by_air_name_per_apc_call`).
+        // We only bump `next_poly_id` above every poly id in the Lean-optimized machine (including
+        // ids used by its derived columns) so later stages (e.g. `add_guards`) issue fresh,
+        // non-colliding ids.
+        column_allocator.raise_next_poly_id_above_machine(&optimized);
+        return Ok((optimized, column_allocator));
+    }
+
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
