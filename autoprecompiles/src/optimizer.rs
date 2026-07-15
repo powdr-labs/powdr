@@ -32,18 +32,6 @@ use crate::{
 #[cfg(feature = "lean-optimizer")]
 mod lean;
 
-/// Marker bound for `optimize`'s `BusTypes`. With the `lean-optimizer` feature it requires
-/// `serde::Serialize` (the Lean FFI path serializes the bus map); without the feature it is
-/// vacuous, so the native path imposes no extra bound.
-#[cfg(feature = "lean-optimizer")]
-pub trait OptimizerBusType: serde::Serialize {}
-#[cfg(feature = "lean-optimizer")]
-impl<T: serde::Serialize> OptimizerBusType for T {}
-#[cfg(not(feature = "lean-optimizer"))]
-pub trait OptimizerBusType {}
-#[cfg(not(feature = "lean-optimizer"))]
-impl<T> OptimizerBusType for T {}
-
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
@@ -58,7 +46,7 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
 where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
-    BusTypes: PartialEq + Eq + Clone + Display + OptimizerBusType,
+    BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
     // Opt-in drop-in: delegate to the apc-optimizer via FFI, reseeding the allocator from the
