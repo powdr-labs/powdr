@@ -147,7 +147,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         let TraceData {
             dummy_values,
             dummy_trace_index_to_apc_index_by_instruction,
-            removed_column_dummy_index_by_instruction,
+            apc_poly_id_to_dummy_index,
             apc_poly_id_to_index,
             columns_to_compute,
         } = generate_trace(
@@ -172,9 +172,15 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                 // map the dummy rows to the autoprecompile row
 
                 use powdr_autoprecompiles::expression::MappingRowEvaluator;
-                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
+
+                // The per-instruction dummy trace rows for this apc call.
+                let dummy_rows: Vec<&[BabyBear]> = dummy_values
                     .iter()
                     .map(|r| &r.data[r.start..r.start + r.length])
+                    .collect();
+
+                for (&dummy_row, dummy_trace_index_to_apc_index) in dummy_rows
+                    .iter()
                     .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
@@ -182,31 +188,18 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     }
                 }
 
-                // Collect the values of columns that were substituted out of the APC but are still
-                // referenced by a derived column's computation method (e.g. re-encoding's original
-                // group columns). These have no slot in `row_slice`; their values come straight from
-                // the original instruction trace. Empty in the native optimizer path.
-                let removed_column_values: HashMap<u64, BabyBear> = dummy_values
-                    .iter()
-                    .map(|r| &r.data[r.start..r.start + r.length])
-                    .zip_eq(&removed_column_dummy_index_by_instruction)
-                    .flat_map(|(dummy_row, removed)| {
-                        removed.iter().map(move |(dummy_trace_index, poly_id)| {
-                            (*poly_id, dummy_row[*dummy_trace_index])
-                        })
-                    })
-                    .collect();
-
-                // Fill in the columns we have to compute from other columns
-                // (these are either new columns or for example the "is_valid" column).
+                // Fill in the columns we have to compute from other columns (these are either new
+                // columns or for example the "is_valid" column). Their inputs — both columns
+                // surviving in the APC and columns removed from it (e.g. re-encoding's original
+                // group columns) — are read directly from the dummy trace via
+                // `apc_poly_id_to_dummy_index`.
                 for derived_column in columns_to_compute {
                     if derived_column.is_new {
                         let col_index = apc_poly_id_to_index[&derived_column.variable.id];
                         row_slice[col_index] = evaluate_computation_method(
                             &derived_column.computation_method,
-                            row_slice,
-                            &apc_poly_id_to_index,
-                            &removed_column_values,
+                            &dummy_rows,
+                            &apc_poly_id_to_dummy_index,
                         );
                     }
                 }
@@ -240,26 +233,24 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
 fn evaluate_computation_method(
     method: &ComputationMethod<BabyBear, AlgebraicExpression<BabyBear>>,
-    row_slice: &[BabyBear],
-    apc_poly_id_to_index: &BTreeMap<u64, usize>,
-    removed_column_values: &HashMap<u64, BabyBear>,
+    dummy_rows: &[&[BabyBear]],
+    apc_poly_id_to_dummy_index: &BTreeMap<u64, (usize, usize)>,
 ) -> BabyBear {
     let eval = |e: &AlgebraicExpression<BabyBear>| {
         e.to_expression(&|n| *n, &|column_ref| {
-            // Surviving columns live in `row_slice`; columns substituted out of the APC but still
-            // referenced by this derived column are resolved from the original instruction trace.
-            match apc_poly_id_to_index.get(&column_ref.id) {
-                Some(index) => row_slice[*index],
-                None => *removed_column_values
-                    .get(&column_ref.id)
-                    .unwrap_or_else(|| {
-                        panic!(
-                        "derived column references poly id {} which is neither an APC column nor a \
-                         removed column recoverable from the original trace",
+            // Every column referenced by a derived column is backed by the original instruction
+            // trace (derived columns never depend on other derived columns), so both surviving and
+            // removed columns are read directly from the dummy trace.
+            let (instruction, index) = apc_poly_id_to_dummy_index
+                .get(&column_ref.id)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "derived column references poly id {} which is not backed by the original \
+                         instruction trace",
                         column_ref.id
                     )
-                    }),
-            }
+                });
+            dummy_rows[*instruction][*index]
         })
     };
     match method {
@@ -274,19 +265,9 @@ fn evaluate_computation_method(
         }
         ComputationMethod::IfEqZero(condition, then, else_) => {
             if eval(condition).is_zero() {
-                evaluate_computation_method(
-                    then,
-                    row_slice,
-                    apc_poly_id_to_index,
-                    removed_column_values,
-                )
+                evaluate_computation_method(then, dummy_rows, apc_poly_id_to_dummy_index)
             } else {
-                evaluate_computation_method(
-                    else_,
-                    row_slice,
-                    apc_poly_id_to_index,
-                    removed_column_values,
-                )
+                evaluate_computation_method(else_, dummy_rows, apc_poly_id_to_dummy_index)
             }
         }
     }
@@ -315,44 +296,50 @@ mod tests {
         ComputationMethod::QuotientOrZero(col(id), num(1))
     }
 
-    /// A surviving column present in `apc_poly_id_to_index` is read from `row_slice`
-    /// (unchanged native behavior; `removed_column_values` is empty here).
+    /// A column referenced by a derived column is resolved from the dummy trace via its
+    /// `(instruction, index)` location, regardless of whether it survives in the APC.
     #[test]
-    fn resolves_surviving_column_from_row_slice() {
-        let apc_poly_id_to_index: BTreeMap<u64, usize> = [(5u64, 1usize)].into_iter().collect();
-        let row_slice = [BabyBear::from_u32(11), BabyBear::from_u32(22)];
-        let removed = HashMap::new();
+    fn resolves_column_from_dummy_trace() {
+        // poly id 5 lives at index 1 of instruction 0's dummy row.
+        let apc_poly_id_to_dummy_index: BTreeMap<u64, (usize, usize)> =
+            [(5u64, (0usize, 1usize))].into_iter().collect();
+        let instr0 = [BabyBear::from_u32(11), BabyBear::from_u32(22)];
+        let dummy_rows: Vec<&[BabyBear]> = vec![&instr0];
         let got =
-            evaluate_computation_method(&copy_of(5), &row_slice, &apc_poly_id_to_index, &removed);
+            evaluate_computation_method(&copy_of(5), &dummy_rows, &apc_poly_id_to_dummy_index);
         assert_eq!(got, BabyBear::from_u32(22));
     }
 
-    /// The fix: a column substituted out of the APC (absent from `apc_poly_id_to_index`, e.g.
-    /// re-encoding's original group columns 830/831) is resolved from the original instruction
-    /// trace via `removed_column_values` instead of panicking on the missing index.
-    /// Pre-fix, `apc_poly_id_to_index[&830]` was an unconditional `BTreeMap` index and panicked.
+    /// A column substituted out of the APC (e.g. re-encoding's original group columns 830/831) has
+    /// no APC index but is still recovered from the original instruction trace, spanning multiple
+    /// instruction dummy rows.
     #[test]
-    fn resolves_removed_column_from_original_trace() {
-        let apc_poly_id_to_index: BTreeMap<u64, usize> = [(5u64, 0usize)].into_iter().collect();
-        let row_slice = [BabyBear::from_u32(99)];
-        let removed: HashMap<u64, BabyBear> =
-            [(830u64, BabyBear::from_u32(7))].into_iter().collect();
-        // 830 is NOT in apc_poly_id_to_index; without the fix this indexes a missing key.
-        assert!(!apc_poly_id_to_index.contains_key(&830));
+    fn resolves_removed_column_from_dummy_trace() {
+        // poly id 830 lives at index 2 of instruction 1's dummy row.
+        let apc_poly_id_to_dummy_index: BTreeMap<u64, (usize, usize)> =
+            [(5u64, (0usize, 0usize)), (830u64, (1usize, 2usize))]
+                .into_iter()
+                .collect();
+        let instr0 = [BabyBear::from_u32(99)];
+        let instr1 = [
+            BabyBear::from_u32(0),
+            BabyBear::from_u32(0),
+            BabyBear::from_u32(7),
+        ];
+        let dummy_rows: Vec<&[BabyBear]> = vec![&instr0, &instr1];
         let got =
-            evaluate_computation_method(&copy_of(830), &row_slice, &apc_poly_id_to_index, &removed);
+            evaluate_computation_method(&copy_of(830), &dummy_rows, &apc_poly_id_to_dummy_index);
         assert_eq!(got, BabyBear::from_u32(7));
     }
 
-    /// A reference that is neither a surviving APC column nor a recoverable removed column fails
-    /// with a legible message rather than a bare map-index panic.
+    /// A reference to a column not backed by the original instruction trace fails with a legible
+    /// message rather than a bare map-index panic.
     #[test]
-    #[should_panic(expected = "neither an APC column nor a")]
+    #[should_panic(expected = "not backed by the original")]
     fn panics_legibly_on_truly_unknown_column() {
-        let apc_poly_id_to_index: BTreeMap<u64, usize> = BTreeMap::new();
-        let row_slice: [BabyBear; 0] = [];
-        let removed = HashMap::new();
+        let apc_poly_id_to_dummy_index: BTreeMap<u64, (usize, usize)> = BTreeMap::new();
+        let dummy_rows: Vec<&[BabyBear]> = vec![];
         let _ =
-            evaluate_computation_method(&copy_of(830), &row_slice, &apc_poly_id_to_index, &removed);
+            evaluate_computation_method(&copy_of(830), &dummy_rows, &apc_poly_id_to_dummy_index);
     }
 }
