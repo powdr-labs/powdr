@@ -179,12 +179,22 @@ impl<ISA: OpenVmISA> StagedPipeline<ISA> {
     }
 }
 
-/// Stable-within-build fingerprint of the transpiled `VmExe`. Captures any
-/// guest change (source, deps, toolchain) that would affect downstream
-/// stages.
+/// Stable-within-build fingerprint of the guest. Captures any guest change
+/// (source, deps, toolchain) that would affect downstream stages.
+///
+/// Besides the transpiled `VmExe`, this covers the two drop-hint axes that
+/// live outside the exe but drive APC generation: the hints the frontend
+/// produced (`get_drop_hints`) and how the ISA interprets them
+/// (`drop_hint_config`). Hashing both keeps the staged cache correct
+/// regardless of whether an ISA disables the feature by suppressing hint
+/// production or by returning no lowering config.
 fn hash_guest_exe<ISA: OpenVmISA>(guest: &OriginalCompiledProgram<'_, ISA>) -> String {
     let bytes = serde_cbor::to_vec(&*guest.exe).expect("serialize VmExe for hashing");
     let mut hasher = DefaultHasher::new();
     bytes.hash(&mut hasher);
+    let hints = ISA::get_drop_hints(guest);
+    let hints = serde_cbor::to_vec(&hints).expect("serialize drop hints for hashing");
+    hints.hash(&mut hasher);
+    ISA::drop_hint_config().hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }

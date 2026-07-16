@@ -84,6 +84,11 @@ pub struct GenerateConfig {
     pub apc_candidates_dir_path: Option<PathBuf>,
     /// Whether to use optimistic precompiles.
     pub should_use_optimistic_precompiles: bool,
+    /// Whether the guest's liveness (drop) hints are consumed during APC
+    /// generation. The hints remain part of the guest artifact either way;
+    /// this only gates their use, and — being part of this (hashed) config —
+    /// keys the staged cache from the generate stage onwards.
+    pub use_drop_hints: bool,
 }
 
 impl GenerateConfig {
@@ -96,6 +101,7 @@ impl GenerateConfig {
             degree_bound,
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
+            use_drop_hints: true,
         }
     }
 
@@ -136,6 +142,11 @@ impl GenerateConfig {
 
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
+        self
+    }
+
+    pub fn with_drop_hints(mut self, use_drop_hints: bool) -> Self {
+        self.use_drop_hints = use_drop_hints;
         self
     }
 

@@ -307,14 +307,20 @@ fn generate_apcs_with_adapter<
     let original_config = &original_program.vm_config;
     let mut airs = original_config.airs(generate.degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
     // Key the ISA's per-instruction liveness hints by program counter (empty for
-    // ISAs that don't emit them); consumed later by `lower_memory_drops`.
+    // ISAs that don't emit them); consumed later by `lower_memory_drops`. The
+    // hints are part of the guest artifact regardless; the config only gates
+    // whether APC generation uses them.
     let base_pc = original_program.exe.program.pc_base as u64;
-    airs.drop_hints = ISA::get_drop_hints(original_program)
-        .iter()
-        .enumerate()
-        .filter(|(_, hints)| !hints.is_empty())
-        .map(|(i, hints)| (base_pc + i as u64 * DEFAULT_PC_STEP as u64, hints.clone()))
-        .collect();
+    airs.drop_hints = if generate.use_drop_hints {
+        ISA::get_drop_hints(original_program)
+            .iter()
+            .enumerate()
+            .filter(|(_, hints)| !hints.is_empty())
+            .map(|(i, hints)| (base_pc + i as u64 * DEFAULT_PC_STEP as u64, hints.clone()))
+            .collect()
+    } else {
+        Default::default()
+    };
     let bus_map = original_config.bus_map();
 
     let vm_config = VmConfig {

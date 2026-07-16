@@ -18,7 +18,7 @@ use powdr_number::FieldElement;
 /// ISA-level constants needed to lower drop hints. Returned by the ISA; `None`
 /// means the ISA does not emit liveness hints, so lowering is skipped entirely.
 /// These are pure ISA data — all machine introspection happens in this module.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash)]
 pub struct DropHintConfig {
     /// Address space of the FP-relative register slots the hints refer to.
     pub register_address_space: u32,
