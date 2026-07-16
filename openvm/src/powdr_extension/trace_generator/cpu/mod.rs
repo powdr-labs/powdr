@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
@@ -12,8 +9,9 @@ use openvm_stark_backend::{
     prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::{expression::AlgebraicExpression, trace_handler::TraceTrait};
+use powdr_autoprecompiles::trace_handler::{DummyCoord, ResolvedMethod, TraceTrait};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_expression::AlgebraicExpression;
 use powdr_number::ExpressionConvertible;
 
 use crate::{
@@ -171,9 +169,15 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                 // map the dummy rows to the autoprecompile row
 
                 use powdr_autoprecompiles::expression::MappingRowEvaluator;
-                for (dummy_row, dummy_trace_index_to_apc_index) in dummy_values
+
+                // The per-instruction dummy trace rows for this apc call.
+                let dummy_rows: Vec<&[BabyBear]> = dummy_values
                     .iter()
                     .map(|r| &r.data[r.start..r.start + r.length])
+                    .collect();
+
+                for (&dummy_row, dummy_trace_index_to_apc_index) in dummy_rows
+                    .iter()
                     .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
                 {
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
@@ -181,17 +185,10 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     }
                 }
 
-                // Fill in the columns we have to compute from other columns
-                // (these are either new columns or for example the "is_valid" column).
-                for derived_column in columns_to_compute {
-                    if derived_column.is_new {
-                        let col_index = apc_poly_id_to_index[&derived_column.variable.id];
-                        row_slice[col_index] = evaluate_computation_method(
-                            &derived_column.computation_method,
-                            row_slice,
-                            &apc_poly_id_to_index,
-                        );
-                    }
+                // Fill the computed columns (e.g. `is_valid`), each pre-resolved to its APC row
+                // index and a method reading its inputs from the dummy trace.
+                for (target_index, method) in &columns_to_compute {
+                    row_slice[*target_index] = evaluate_computation_method(method, &dummy_rows);
                 }
 
                 let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
@@ -222,13 +219,13 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 }
 
 fn evaluate_computation_method(
-    method: &ComputationMethod<BabyBear, AlgebraicExpression<BabyBear>>,
-    row_slice: &[BabyBear],
-    apc_poly_id_to_index: &BTreeMap<u64, usize>,
+    method: &ResolvedMethod<BabyBear>,
+    dummy_rows: &[&[BabyBear]],
 ) -> BabyBear {
-    let eval = |e: &AlgebraicExpression<BabyBear>| {
-        e.to_expression(&|n| *n, &|column_ref| {
-            row_slice[apc_poly_id_to_index[&column_ref.id]]
+    // References were resolved to dummy-trace coordinates at build time, so read them directly.
+    let eval = |e: &AlgebraicExpression<BabyBear, DummyCoord>| {
+        e.to_expression(&|n| *n, &|coord: &DummyCoord| {
+            dummy_rows[coord.instruction][coord.index]
         })
     };
     match method {
@@ -243,10 +240,60 @@ fn evaluate_computation_method(
         }
         ComputationMethod::IfEqZero(condition, then, else_) => {
             if eval(condition).is_zero() {
-                evaluate_computation_method(then, row_slice, apc_poly_id_to_index)
+                evaluate_computation_method(then, dummy_rows)
             } else {
-                evaluate_computation_method(else_, row_slice, apc_poly_id_to_index)
+                evaluate_computation_method(else_, dummy_rows)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn coord(instruction: usize, index: usize) -> AlgebraicExpression<BabyBear, DummyCoord> {
+        AlgebraicExpression::Reference(DummyCoord { instruction, index })
+    }
+
+    fn num(v: u32) -> AlgebraicExpression<BabyBear, DummyCoord> {
+        AlgebraicExpression::Number(BabyBear::from_u32(v))
+    }
+
+    /// A derived-column method that simply copies the value at a dummy-trace coordinate
+    /// (`QuotientOrZero(coord, 1)` evaluates to that value).
+    fn copy_of(
+        instruction: usize,
+        index: usize,
+    ) -> ComputationMethod<BabyBear, AlgebraicExpression<BabyBear, DummyCoord>> {
+        ComputationMethod::QuotientOrZero(coord(instruction, index), num(1))
+    }
+
+    /// A derived-column input is read from the dummy trace at its resolved `(instruction, index)`
+    /// coordinate.
+    #[test]
+    fn resolves_column_from_dummy_trace() {
+        // input lives at index 1 of instruction 0's dummy row.
+        let instr0 = [BabyBear::from_u32(11), BabyBear::from_u32(22)];
+        let dummy_rows: Vec<&[BabyBear]> = vec![&instr0];
+        let got = evaluate_computation_method(&copy_of(0, 1), &dummy_rows);
+        assert_eq!(got, BabyBear::from_u32(22));
+    }
+
+    /// A column substituted out of the APC (e.g. re-encoding's original group columns) has no APC
+    /// index but is still recovered from the original instruction trace, spanning multiple
+    /// instruction dummy rows.
+    #[test]
+    fn resolves_removed_column_from_dummy_trace() {
+        // input lives at index 2 of instruction 1's dummy row.
+        let instr0 = [BabyBear::from_u32(99)];
+        let instr1 = [
+            BabyBear::from_u32(0),
+            BabyBear::from_u32(0),
+            BabyBear::from_u32(7),
+        ];
+        let dummy_rows: Vec<&[BabyBear]> = vec![&instr0, &instr1];
+        let got = evaluate_computation_method(&copy_of(1, 2), &dummy_rows);
+        assert_eq!(got, BabyBear::from_u32(7));
     }
 }
