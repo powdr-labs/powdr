@@ -269,13 +269,6 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
             .unique_references()
             .map(|r| r.id)
             .collect::<BTreeSet<_>>();
-        // Poly_ids referenced by derived-column computation methods. These may point at columns that
-        // were substituted out of the constraints/bus interactions (hence absent from
-        // `all_references`) but whose values witgen still needs to compute the derived column — e.g.
-        // Leanr's re-encoding pass references the original group columns. We keep their substitutions
-        // so witgen can recover the removed columns' values from the original instruction trace.
-        // In the native optimizer path derived methods only reference surviving columns, so this set
-        // is a subset of `all_references` and the retained `subs` are unchanged.
         let derived_referenced = machine
             .derived_columns
             .iter()
