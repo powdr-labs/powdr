@@ -269,7 +269,15 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
             .unique_references()
             .map(|r| r.id)
             .collect::<BTreeSet<_>>();
-        // Only keep substitutions from the column allocator if the target poly_id is used in the machine
+        let derived_referenced = machine
+            .derived_columns
+            .iter()
+            .flat_map(|d| d.computation_method.expressions())
+            .flat_map(|e| e.unique_references())
+            .map(|r| r.id)
+            .collect::<BTreeSet<_>>();
+        // Only keep substitutions from the column allocator if the target poly_id is used in the
+        // machine or referenced by a derived column.
         let subs = column_allocator
             .subs
             .iter()
@@ -277,12 +285,12 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
                 subs.iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
-                        all_references
-                            .contains(apc_poly_id)
-                            .then_some(Substitution {
-                                original_poly_index,
-                                apc_poly_id: *apc_poly_id,
-                            })
+                        (all_references.contains(apc_poly_id)
+                            || derived_referenced.contains(apc_poly_id))
+                        .then_some(Substitution {
+                            original_poly_index,
+                            apc_poly_id: *apc_poly_id,
+                        })
                     })
                     .collect_vec()
             })
