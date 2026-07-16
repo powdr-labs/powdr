@@ -29,3 +29,6 @@ mult=is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_
 
 // Algebraic constraints:
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

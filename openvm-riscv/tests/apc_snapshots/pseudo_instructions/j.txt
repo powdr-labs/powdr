@@ -16,3 +16,6 @@ mult=is_valid, args=[8, inner__from_state__timestamp_0 + 1]
 
 // Algebraic constraints:
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1

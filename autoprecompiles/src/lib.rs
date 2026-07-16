@@ -282,7 +282,15 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
             .unique_references()
             .map(|r| r.id)
             .collect::<BTreeSet<_>>();
-        // Only keep substitutions from the column allocator if the target poly_id is used in the machine
+        let derived_referenced = machine
+            .derived_columns
+            .iter()
+            .flat_map(|d| d.computation_method.expressions())
+            .flat_map(|e| e.unique_references())
+            .map(|r| r.id)
+            .collect::<BTreeSet<_>>();
+        // Only keep substitutions from the column allocator if the target poly_id is used in the
+        // machine or referenced by a derived column.
         let subs = column_allocator
             .subs
             .iter()
@@ -290,12 +298,12 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
                 subs.iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
-                        all_references
-                            .contains(apc_poly_id)
-                            .then_some(Substitution {
-                                original_poly_index,
-                                apc_poly_id: *apc_poly_id,
-                            })
+                        (all_references.contains(apc_poly_id)
+                            || derived_referenced.contains(apc_poly_id))
+                        .then_some(Substitution {
+                            original_poly_index,
+                            apc_poly_id: *apc_poly_id,
+                        })
                     })
                     .collect_vec()
             })
@@ -490,14 +498,23 @@ fn add_guards_constraint<T: FieldElement>(
 
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = add_guards_constraint(*left, is_valid);
-            let right = match op {
-                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => {
-                    Box::new(add_guards_constraint(*right, is_valid))
+            let (left, right) = match op {
+                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => (
+                    // Both sides need to be guarded.
+                    add_guards_constraint(*left, is_valid),
+                    add_guards_constraint(*right, is_valid),
+                ),
+                AlgebraicBinaryOperator::Mul => {
+                    // Only one side needs to be guarded. It does not matter which, but it cannot be
+                    // a constant, because that would increase the degree.
+                    if matches!(*left, AlgebraicExpression::Number(_)) {
+                        (*left, add_guards_constraint(*right, is_valid))
+                    } else {
+                        (add_guards_constraint(*left, is_valid), *right)
+                    }
                 }
-                AlgebraicBinaryOperator::Mul => right,
             };
-            AlgebraicExpression::new_binary(left, op, *right)
+            AlgebraicExpression::new_binary(left, op, right)
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
             let inner = add_guards_constraint(*expr, is_valid);
@@ -536,6 +553,7 @@ fn add_guards<T: FieldElement>(
     let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
     machine.derived_columns.push(DerivedVariable::new(
+        true,
         is_valid_ref,
         ComputationMethod::Constant(T::one()),
     ));

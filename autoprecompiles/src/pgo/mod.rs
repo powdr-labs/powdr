@@ -6,7 +6,7 @@ use crate::{
     blocks::SuperBlock,
     evaluation::evaluate_apc,
     execution_profile::ExecutionProfile,
-    export::{ExportLevel, ExportOptions},
+    export::ExportOptions,
     EmpiricalConstraints, GenerateConfig,
 };
 
@@ -132,7 +132,6 @@ fn create_apcs<A: Adapter>(
             let export_options = ExportOptions::new(
                 generate_config.apc_candidates_dir_path.clone(),
                 &superblock.start_pcs(),
-                ExportLevel::OnlyAPC,
             );
             let apc = crate::build::<A>(
                 superblock.clone(),

@@ -8,7 +8,7 @@ use powdr_autoprecompiles::export::ExportOptions;
 use powdr_autoprecompiles::{build, VmConfig};
 use powdr_number::BabyBearField;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::extraction_utils::OriginalVmConfig;
 use crate::isa::OpenVmISA;
@@ -41,14 +41,13 @@ pub fn compile_apc<ISA: OpenVmISA>(
         .map(|(pc, inst)| format!("  {pc:>max_pc_digits$}: {}", ISA::format(&inst.inner)))
         .join("\n");
 
-    let export_path = std::env::var("APC_EXPORT_PATH").ok();
-    let export_level = std::env::var("APC_EXPORT_LEVEL").ok();
+    let export_path = std::env::var("APC_EXPORT_PATH").ok().map(PathBuf::from);
 
     let apc = build::<BabyBearOpenVmApcAdapter<ISA>>(
         superblock.clone(),
         vm_config.clone(),
         degree_bound,
-        ExportOptions::from_env_vars(export_path, export_level, &superblock.start_pcs()),
+        ExportOptions::new(export_path, &superblock.start_pcs()),
         &EmpiricalConstraints::default(),
     )
     .unwrap();

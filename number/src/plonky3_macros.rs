@@ -82,8 +82,7 @@ macro_rules! powdr_field_plonky3 {
 
             #[inline]
             fn modulus() -> Self::Integer {
-                let p: u32 = <$p3_type>::order().try_into().unwrap();
-                p.into()
+                <$p3_type as PrimeField32>::ORDER_U32.into()
             }
 
             fn pow(self, exp: Self::Integer) -> Self {
@@ -114,7 +113,7 @@ macro_rules! powdr_field_plonky3 {
             }
 
             fn is_in_lower_half(&self) -> bool {
-                let p: u32 = <$p3_type>::order().try_into().unwrap();
+                let p = <$p3_type as PrimeField32>::ORDER_U32;
                 self.to_canonical_u32() <= (p - 1) / 2
             }
 

@@ -6,7 +6,7 @@ use crate::expression_conversion::{
 use crate::powdr::UniqueReferences;
 use itertools::Itertools;
 use powdr_constraint_solver::constraint_system::{
-    self, AlgebraicConstraint, BusInteraction, ConstraintSystem, DerivedVariable, Hint,
+    AlgebraicConstraint, BusInteraction, ConstraintSystem, DerivedVariable, Hint,
 };
 use powdr_constraint_solver::grouped_expression::GroupedExpression;
 use powdr_expression::AlgebraicUnaryOperator;
@@ -188,9 +188,6 @@ pub struct SymbolicMachine<T> {
     pub memory_drops: Vec<MemoryDrop<T>>,
 }
 
-type ComputationMethod<T> =
-    powdr_constraint_solver::constraint_system::ComputationMethod<T, AlgebraicExpression<T>>;
-
 impl<T> SymbolicMachine<T> {
     pub fn main_columns(&self) -> impl Iterator<Item = AlgebraicReference> + use<'_, T> {
         self.unique_references()
@@ -254,6 +251,19 @@ impl<T: Display + Ord + Clone> SymbolicMachine<T> {
             output.push_str(&format!("{constraint} = 0\n"));
         }
 
+        if !self.derived_columns.is_empty() {
+            output.push_str("\n// Derived columns:\n");
+        }
+
+        for derived_column in &self.derived_columns {
+            output.push_str(&format!(
+                "{} ({}) = {}\n",
+                derived_column.variable,
+                if derived_column.is_new { "new" } else { "old" },
+                &derived_column.computation_method
+            ));
+        }
+
         output.trim().to_string()
     }
 }
@@ -308,20 +318,12 @@ pub fn symbolic_machine_to_constraint_system<P: FieldElement>(
             .collect(),
         derived_variables: symbolic_machine
             .derived_columns
-            .iter()
+            .into_iter()
             .map(|derived_variable| {
-                let method = match &derived_variable.computation_method {
-                    ComputationMethod::Constant(c) => {
-                        constraint_system::ComputationMethod::Constant(*c)
-                    }
-                    ComputationMethod::QuotientOrZero(e1, e2) => {
-                        constraint_system::ComputationMethod::QuotientOrZero(
-                            algebraic_to_grouped_expression(e1),
-                            algebraic_to_grouped_expression(e2),
-                        )
-                    }
-                };
-                DerivedVariable::new(derived_variable.variable.clone(), method)
+                let method = derived_variable
+                    .computation_method
+                    .convert_expression_type(&|expr| algebraic_to_grouped_expression(&expr));
+                DerivedVariable::new(derived_variable.is_new, derived_variable.variable, method)
             })
             .collect(),
         hints: symbolic_machine
@@ -364,18 +366,10 @@ pub fn constraint_system_to_symbolic_machine<P: FieldElement>(
             .derived_variables
             .into_iter()
             .map(|derived_var| {
-                let method = match derived_var.computation_method {
-                    constraint_system::ComputationMethod::Constant(c) => {
-                        constraint_system::ComputationMethod::Constant(c)
-                    }
-                    constraint_system::ComputationMethod::QuotientOrZero(e1, e2) => {
-                        constraint_system::ComputationMethod::QuotientOrZero(
-                            grouped_expression_to_algebraic(e1),
-                            grouped_expression_to_algebraic(e2),
-                        )
-                    }
-                };
-                DerivedVariable::new(derived_var.variable, method)
+                let method = derived_var
+                    .computation_method
+                    .convert_expression_type(&grouped_expression_to_algebraic);
+                DerivedVariable::new(derived_var.is_new, derived_var.variable, method)
             })
             .collect(),
         memory_drops: constraint_system

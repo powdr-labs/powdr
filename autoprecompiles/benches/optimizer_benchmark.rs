@@ -19,12 +19,12 @@ const DEFAULT_DEGREE_BOUND: DegreeBound = DegreeBound {
     bus_interactions: 2,
 };
 
-/// Benching the `test_optimize` test
-fn optimize_keccak_benchmark(c: &mut Criterion) {
-    let mut group = c.benchmark_group("optimize-keccak");
+/// Benches `optimize` on a pre-optimization APC loaded from a gzipped JSON file.
+fn bench_optimize(c: &mut Criterion, group_name: &str, apc_path: &str) {
+    let mut group = c.benchmark_group(group_name);
     group.sample_size(10);
 
-    let file = std::fs::File::open("tests/keccak_apc_pre_opt.json.gz").unwrap();
+    let file = std::fs::File::open(apc_path).unwrap();
     let reader = flate2::read::GzDecoder::new(file);
     let apc: ApcWithBusMap<TestApc, BusMap<OpenVmBusType>> =
         serde_json::from_reader(reader).unwrap();
@@ -40,7 +40,7 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
             |(machine, column_allocator)| {
                 optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
                     black_box(machine),
-                    OpenVmBusInteractionHandler::default(),
+                    OpenVmBusInteractionHandler::new(apc.bus_map.clone()),
                     DEFAULT_DEGREE_BOUND,
                     &apc.bus_map,
                     column_allocator,
@@ -54,5 +54,24 @@ fn optimize_keccak_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, optimize_keccak_benchmark);
+/// Benching the `test_optimize` test
+fn optimize_keccak_benchmark(c: &mut Criterion) {
+    bench_optimize(c, "optimize-keccak", "tests/keccak_apc_pre_opt.json.gz");
+}
+
+/// Benching `optimize` on a wasm guest APC that can exercise the optimizer more heavily than riscv.
+/// This particular APC is part of the `revm_interpreter::instructions::arithmetic::sub` function.
+fn optimize_wasm_reth_apc_benchmark(c: &mut Criterion) {
+    bench_optimize(
+        c,
+        "optimize-wasm-reth-apc",
+        "tests/wasm_reth_apc_pre_opt.json.gz",
+    );
+}
+
+criterion_group!(
+    benches,
+    optimize_keccak_benchmark,
+    optimize_wasm_reth_apc_benchmark
+);
 criterion_main!(benches);

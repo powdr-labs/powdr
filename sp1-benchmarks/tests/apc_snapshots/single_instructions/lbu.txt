@@ -86,3 +86,6 @@ offset_bit__1_0 * ((offset_bit__2_0 - 1) * (selected_limb_0 - memory_access__pre
 offset_bit__1_0 * (offset_bit__2_0 * (selected_limb_0 - memory_access__prev_value__0__3_0)) = 0
 (offset_bit__0_0 - 1) * selected_limb_low_byte_0 + selected_byte_0 - offset_bit__0_0 * (8323072 * selected_limb_low_byte_0 - 8323072 * selected_limb_0) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+is_valid (new) = 1
