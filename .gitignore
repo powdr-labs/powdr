@@ -14,3 +14,7 @@ Cargo.lock
 
 cargo_target/
 riscv/tests/riscv_data/**/target
+
+# Local Lean nightly runner artifacts (run_nightly_lean.sh)
+/openvm-eth/
+/results/
