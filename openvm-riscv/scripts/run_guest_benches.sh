@@ -12,15 +12,38 @@ set -e
 SCRIPT_PATH=$(realpath "${BASH_SOURCE[0]}")
 SCRIPTS_DIR=$(dirname "$SCRIPT_PATH")
 
+# Cargo features for the `powdr_openvm_riscv` builds. Defaults to `metrics` (what
+# nightly uses). The Lean nightly runner overrides this with
+# `metrics,lean-optimizer` to route APC optimization through the apc-optimizer.
+CARGO_FEATURES="${POWDR_BENCH_CARGO_FEATURES:-metrics}"
+
+# When set to 1, time the `generate-apcs` stage separately and record it under
+# each run dir as `apc_generation_time_s.txt`. This warms the shared
+# `--artifacts-dir` cache, so the subsequent `prove` reuses the generate blob
+# (no extra work). Off by default, so nightly is byte-for-byte unchanged.
+TIME_APCS="${POWDR_BENCH_TIME_APCS:-0}"
+
+# Global run counter for the progress banners.
+RUN_INDEX=0
+
+# ANSI colors (cosmetic; harmless in logs).
+C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_BLUE=$'\033[34m'; C_GREEN=$'\033[32m'; C_DIM=$'\033[2m'
+
 run_bench() {
     guest="$1"
     input="$2"
     apcs="$3"
     run_name="$4"
 
+    RUN_INDEX=$((RUN_INDEX + 1))
+    experiment=$(basename "$PWD")
+    bench_start=$SECONDS
+
     echo ""
-    echo "==== ${run_name} ===="
+    echo "${C_BOLD}${C_BLUE}▶ [run ${RUN_INDEX}] ${experiment} / ${run_name}${C_RESET} ${C_DIM}(guest=${guest}, apcs=${apcs}) — running…${C_RESET}"
     echo ""
+
+    mkdir -p "${run_name}"
 
     # `--artifacts-dir` and `--apc-candidates-dir` are shared across all
     # `run_bench` calls with the same (guest, profile-input). For cell PGO
@@ -35,13 +58,23 @@ run_bench() {
     candidates_dir="${cache_root}/candidates"
     mkdir -p "${candidates_dir}"
 
-    mkdir -p "${run_name}"
+    # Optionally time the APC generation stage on its own. `generate-apcs` shares
+    # the generate-stage cache with the `prove` below (same guest, profile-input,
+    # pgo=cell default, artifacts/candidates dirs), so this warms the cache rather
+    # than duplicating work. Only meaningful when apcs > 0.
+    if [ "${TIME_APCS}" = "1" ] && [ "${apcs:-0}" -ne 0 ]; then
+        gen_start=$SECONDS
+        cargo run --bin powdr_openvm_riscv -r --features "${CARGO_FEATURES}" -- \
+            --artifacts-dir "${artifacts_dir}" generate-apcs "$guest" \
+            --profile-input "$input" --apc-candidates-dir "${candidates_dir}"
+        echo "$((SECONDS - gen_start))" > "${run_name}/apc_generation_time_s.txt"
+    fi
 
     psrecord --include-children --interval 1 \
         --log "${run_name}"/psrecord.csv \
         --log-format csv \
         --plot "${run_name}"/psrecord.png \
-        "cargo run --bin powdr_openvm_riscv -r --features metrics -- --artifacts-dir \"${artifacts_dir}\" prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${candidates_dir}\""
+        "cargo run --bin powdr_openvm_riscv -r --features ${CARGO_FEATURES} -- --artifacts-dir \"${artifacts_dir}\" prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${candidates_dir}\""
 
     python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
 
@@ -59,6 +92,14 @@ run_bench() {
     # past ARG_MAX ("Argument list too long"). `apc_candidates.json` doesn't
     # match `apc_candidate_*` (no `_` after `candidate`), so it's preserved.
     find "${candidates_dir}" -maxdepth 1 -name 'apc_candidate_*' -delete
+
+    dur=$((SECONDS - bench_start))
+    gen_note=""
+    if [ -f "${run_name}/apc_generation_time_s.txt" ]; then
+        gen_note=" ${C_DIM}(APC gen: $(cat "${run_name}/apc_generation_time_s.txt")s)${C_RESET}"
+    fi
+    echo ""
+    echo "${C_BOLD}${C_GREEN}✓ [run ${RUN_INDEX}] ${experiment} / ${run_name}${C_RESET} — done in ${dur}s${gen_note}"
 }
 
 # TODO: Some benchmarks are currently disabled to keep the nightly run below 6h.

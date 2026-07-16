@@ -9,6 +9,12 @@ env:
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 50000
+  # Lean optimizer: route APC optimization through the Lean4 apc-optimizer instead
+  # of the native Rust optimizer. Enabled only on the `leanr-nightly-run` branch, so
+  # main's scheduled nightly stays native; a dispatch on that branch runs Lean.
+  POWDR_USE_LEAN_OPTIMIZER: ${{ github.ref_name == 'leanr-nightly-run' && '1' || '' }}
+  POWDR_BENCH_CARGO_FEATURES: ${{ github.ref_name == 'leanr-nightly-run' && 'metrics,lean-optimizer' || 'metrics' }}
+  POWDR_BENCH_TIME_APCS: ${{ github.ref_name == 'leanr-nightly-run' && '1' || '0' }}
 
 jobs:
   bench:
@@ -109,6 +115,14 @@ jobs:
           rm -rf results
           mkdir -p results
 
+      - name: Install Lean toolchain (elan)
+        # The `lean-optimizer` feature links the Lean apc-optimizer via FFI, whose
+        # build script needs `lean`/`lake`. Only needed on the Lean branch.
+        if: env.POWDR_USE_LEAN_OPTIMIZER == '1'
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
       - name: Run guest benchmarks
         # NOTE: don't set RUSTFLAGS here. This step's `cargo run --bin
         # powdr_openvm_riscv` is a HOST build, and `cargo openvm build`
@@ -187,6 +201,17 @@ jobs:
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-eth
 
+      - name: Install Lean toolchain (elan) + enable it in openvm-eth
+        # Route openvm-eth's APC optimization through the Lean apc-optimizer by
+        # adding the lean-optimizer feature to its hardcoded FEATURES list; the
+        # POWDR_USE_LEAN_OPTIMIZER env (inherited) selects it at runtime.
+        if: env.POWDR_USE_LEAN_OPTIMIZER == '1'
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          perl -i -pe 's{^FEATURES="parallel,metrics,jemalloc,unprotected"$}{FEATURES="parallel,metrics,jemalloc,unprotected,powdr-openvm/lean-optimizer,powdr-openvm-riscv/lean-optimizer"}' openvm-eth/run.sh
+          grep -q 'lean-optimizer' openvm-eth/run.sh || { echo "failed to patch openvm-eth FEATURES for lean-optimizer"; exit 1; }
+
       # ---------- Modal-side preparation: prefetch + compile ----------
       # `--mode execute` populates openvm-eth/rpc-cache/ with the block
       # data Modal needs. Without this, every prove-stark on Modal would
@@ -222,6 +247,10 @@ jobs:
           cp apcs/apc_candidates.json ../apc_candidates_modal.json
 
       - name: Upload caches to Modal Volume
+        # Skip the Modal/GPU path on the Lean branch: Modal builds openvm-eth
+        # itself (un-patched), so it would publish native GPU numbers under a
+        # Lean run. The Lean nightly is CPU-only.
+        if: env.POWDR_USE_LEAN_OPTIMIZER != '1'
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -236,6 +265,7 @@ jobs:
           modal volume put "$MODAL_VOLUME" apc-cache.tgz "/${RUN_ID}/apc-cache.tgz" --force
 
       - name: Run prove-stark on Modal (best effort)
+        if: env.POWDR_USE_LEAN_OPTIMIZER != '1'  # CPU-only on the Lean branch (see above)
         # Sequential over {0,10,30}. Each Modal invocation includes its own
         # cargo build (a few minutes) and the actual GPU prove (~1 min);
         # total ~15-20 min, far less than the CPU reth bench that follows.
@@ -261,6 +291,7 @@ jobs:
           done
 
       - name: Download Modal outputs and post-process (best effort)
+        if: env.POWDR_USE_LEAN_OPTIMIZER != '1'  # CPU-only on the Lean branch (see above)
         # Tolerates partial Modal output: any apc whose metrics.json is
         # missing on the volume is skipped with a warning. If no apc
         # produced output at all, the reth_gpu_modal/ subdir is dropped
@@ -375,7 +406,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Cleanup Modal Volume
-        if: always()
+        if: ${{ always() && env.POWDR_USE_LEAN_OPTIMIZER != '1' }}
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -422,14 +453,25 @@ jobs:
 
       - name: get the date/time
         id: date
-        run: echo "value=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+        # Suffix Lean runs with `-lean` (like the `-gpu` convention) so they
+        # publish to a distinct results/<date>-lean/ dir instead of mixing into
+        # the canonical nightly results.
+        run: |
+          SUFFIX=""
+          [ "${POWDR_USE_LEAN_OPTIMIZER}" = "1" ] && SUFFIX="-lean"
+          echo "value=$(date +'%Y-%m-%d-%H%M')${SUFFIX}" >> "$GITHUB_OUTPUT"
 
       - name: Generate bench results README
         run: |
           source .venv/bin/activate
+          NOTE_ARG=()
+          if [ "${POWDR_USE_LEAN_OPTIMIZER}" = "1" ]; then
+            NOTE_ARG=(--note "Identical to the nightly benchmarks, but APC optimization is routed through the Lean4 verified [apc-optimizer](https://github.com/powdr-labs/apc-optimizer) via FFI (POWDR_USE_LEAN_OPTIMIZER=1) instead of the native Rust optimizer. Proving is unchanged; only APC generation differs.")
+          fi
           python3 ./openvm-riscv/scripts/generate_bench_results_readme.py \
             ./results \
             "${{ steps.date.outputs.value }}" \
+            "${NOTE_ARG[@]}" \
             --output ./results/readme.md
 
       # Push via partial+sparse clone so the runner only ever holds the new
@@ -463,6 +505,10 @@ jobs:
           git push origin gh-pages
 
   test_apc_gpu:
+    # The Lean optimizer doesn't work on GPU yet, so skip this job entirely on
+    # the Lean branch (job-level `if` can't read the env context, hence the
+    # direct ref check). main's nightly still runs it.
+    if: github.ref_name != 'leanr-nightly-run'
     runs-on: [self-hosted, gpu-shared]
 
     steps:
