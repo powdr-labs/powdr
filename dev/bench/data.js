@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784158928410,
+  "lastUpdate": 1784206753596,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416601,6 +416601,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 43534936663,
             "range": "± 474783565",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "id": "7da6691d3e8a713a34a297bb30f9c075e719b62b",
+          "message": "Add run_nightly_lean.sh: local copy of the Lean nightly (guest + reth CPU)\n\nRuns the test_apc_guest and test_apc_reth (CPU) jobs from nightly-tests.yml\nsequentially on one machine with the Lean optimizer enabled — a faithful copy\nof those jobs' steps for running on a local server instead of waiting on CI\nrunners. Skips the Modal/GPU path, and (like the workflow) publishes to\nbench-results under results/<date>-lean/ and pushes it. Separate commit from\nthe workflow change so it's easy to drop from the PR.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-16T12:56:51Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/7da6691d3e8a713a34a297bb30f9c075e719b62b"
+        },
+        "date": 1784206744434,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 19724136634,
+            "range": "± 493818446",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 38479775578,
+            "range": "± 738021110",
             "unit": "ns/iter"
           }
         ]
