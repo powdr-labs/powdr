@@ -10,6 +10,8 @@ use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_boun
 use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_number::FieldElement;
+#[cfg(feature = "lean-optimizer")]
+use powdr_number::KnownField;
 
 use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
@@ -51,6 +53,14 @@ where
 {
     #[cfg(feature = "lean-optimizer")]
     if lean::enabled() {
+        // TODO: In addition to the field, the Lean optimizer also assumes the OpenVM
+        // bus semantics with the default bus. It also ignores the degree bound.
+        // Eventually, we should pass an argument encoding which known VM we're optimizing for.
+        assert_eq!(
+            T::known_field(),
+            Some(KnownField::BabyBearField),
+            "Lean optimizer only supports BabyBear"
+        );
         let (optimized, next_free_id) =
             lean::optimize(&machine, bus_map, column_allocator.next_poly_id);
         column_allocator.next_poly_id = next_free_id;
