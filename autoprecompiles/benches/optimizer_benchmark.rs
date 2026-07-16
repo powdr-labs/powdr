@@ -7,10 +7,7 @@ use powdr_autoprecompiles::{
 };
 use powdr_number::BabyBearField;
 
-use powdr_openvm_bus_interaction_handler::{
-    bus_map::OpenVmBusType, memory_bus_interaction::OpenVmMemoryBusInteraction,
-    OpenVmBusInteractionHandler,
-};
+use powdr_openvm_bus_interaction_handler::{bus_map::OpenVmBusType, OpenVmBusInteractionHandler};
 
 type TestApc = Apc<BabyBearField, SimpleInstruction<BabyBearField>, (), ()>;
 
@@ -38,7 +35,7 @@ fn bench_optimize(c: &mut Criterion, group_name: &str, apc_path: &str) {
                 )
             },
             |(machine, column_allocator)| {
-                optimize::<_, _, _, OpenVmMemoryBusInteraction<_, _>>(
+                optimize(
                     black_box(machine),
                     OpenVmBusInteractionHandler::new(apc.bus_map.clone()),
                     DEFAULT_DEGREE_BOUND,

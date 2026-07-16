@@ -1,25 +1,18 @@
+use std::array::IntoIter;
 use std::hash::Hash;
-use std::{array::IntoIter, fmt::Display};
 
 use powdr_autoprecompiles::memory_optimizer::{
-    MemoryBusInteraction, MemoryBusInteractionConversionError, MemoryOp,
+    MemoryBusInteraction, MemoryBusInteractionConversionError, MemoryInteractionParser, MemoryOp,
 };
 use powdr_constraint_solver::{
     constraint_system::BusInteraction, grouped_expression::GroupedExpression,
 };
 use powdr_number::FieldElement;
 
+use crate::OpenVmBusInteractionHandler;
+
 /// The memory address space for register memory operations.
 pub const REGISTER_ADDRESS_SPACE: u32 = 1;
-
-#[derive(Clone, Debug)]
-pub struct OpenVmMemoryBusInteraction<T: FieldElement, V> {
-    op: MemoryOp,
-    address: OpenVmAddress<T, V>,
-    data: Vec<GroupedExpression<T, V>>,
-    timestamp: Vec<GroupedExpression<T, V>>,
-}
-
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub struct OpenVmAddress<T, V> {
     /// The address space (e.g. register, memory, native, etc.), always a concrete number.
@@ -41,15 +34,16 @@ impl<T: FieldElement, V> IntoIterator for OpenVmAddress<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction<T, V>
-    for OpenVmMemoryBusInteraction<T, V>
-{
-    type Address = OpenVmAddress<T, V>;
+impl<T: FieldElement> MemoryInteractionParser<T> for OpenVmBusInteractionHandler<T> {
+    type Address<V> = OpenVmAddress<T, V>;
 
-    fn try_from_bus_interaction(
+    fn try_to_memory_interaction<V: Ord + Clone + Eq>(
         bus_interaction: &BusInteraction<GroupedExpression<T, V>>,
         memory_bus_id: u64,
-    ) -> Result<Option<Self>, MemoryBusInteractionConversionError> {
+    ) -> Result<
+        Option<MemoryBusInteraction<T, V, Self::Address<V>>>,
+        MemoryBusInteractionConversionError,
+    > {
         match bus_interaction.bus_id.try_to_number() {
             None => return Err(MemoryBusInteractionConversionError),
             Some(id) if id == memory_bus_id.into() => {}
@@ -72,27 +66,11 @@ impl<T: FieldElement, V: Ord + Clone + Eq + Display + Hash> MemoryBusInteraction
             address_space,
             local_address: addr.clone(),
         };
-        Ok(Some(OpenVmMemoryBusInteraction {
+        Ok(Some(MemoryBusInteraction {
             op,
             address,
             data: data.to_vec(),
-            timestamp: vec![timestamp.clone()],
+            timestamp_limbs: vec![timestamp.clone()],
         }))
-    }
-
-    fn addr(&self) -> Self::Address {
-        self.address.clone()
-    }
-
-    fn data(&self) -> &[GroupedExpression<T, V>] {
-        &self.data
-    }
-
-    fn timestamp_limbs(&self) -> &[GroupedExpression<T, V>] {
-        &self.timestamp
-    }
-
-    fn op(&self) -> MemoryOp {
-        self.op
     }
 }

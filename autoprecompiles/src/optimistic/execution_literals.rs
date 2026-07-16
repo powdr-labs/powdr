@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::export::ExportOptions;
-use crate::memory_optimizer::MemoryBusInteraction;
+use crate::memory_optimizer::MemoryInteractionParser;
 use crate::symbolic_machine::{
     symbolic_bus_interaction_to_bus_interaction, SymbolicBusInteraction,
 };
@@ -74,7 +74,7 @@ fn extract_concrete_memory_accesses<A: Adapter>(
     // Note that the optimizer would still remove some memory accesses, if the instruction
     // accesses the same register multiple times.
     let dummy_column_allocator = ColumnAllocator::from_max_poly_id_of_machine(&symbolic_machine);
-    let (symbolic_machine, _) = optimize::<_, _, _, A::MemoryBusInteraction<_>>(
+    let (symbolic_machine, _) = optimize(
         symbolic_machine.clone(),
         vm_config.bus_interaction_handler.clone(),
         *degree_bound,
@@ -109,12 +109,12 @@ fn try_extract_concrete_memory_access<A: Adapter>(
 ) -> Option<ConcreteMemoryAccess<A::PowdrField>> {
     let bus_interaction = symbolic_bus_interaction_to_bus_interaction(&bus_interaction);
     let bus_interaction =
-        A::MemoryBusInteraction::try_from_bus_interaction(&bus_interaction, memory_bus_id)
+        A::BusInteractionHandler::try_to_memory_interaction(&bus_interaction, memory_bus_id)
             // TODO: This filters out memory bus interactions with unknown multiplicity.
             .ok()
             .flatten()?;
-    let address = bus_interaction.addr();
-    let data = bus_interaction.data();
+    let address = bus_interaction.address;
+    let data = bus_interaction.data;
 
     // Find concrete address
     let concrete_address = address
@@ -128,7 +128,7 @@ fn try_extract_concrete_memory_access<A: Adapter>(
         .map(|expr| expr.try_to_simple_unknown())
         .collect::<Option<Vec<_>>>()?;
 
-    let instruction_index = match bus_interaction.op() {
+    let instruction_index = match bus_interaction.op {
         MemoryOp::GetPrevious => instruction_index,
         MemoryOp::SetNew => instruction_index + 1,
     };
