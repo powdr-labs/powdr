@@ -12,6 +12,9 @@ default = ["metrics"]
 metrics = ["powdr-openvm/metrics", "openvm-sdk/metrics", "openvm-stark-backend/metrics", "openvm-stark-sdk/metrics"]
 aot = ["powdr-openvm-riscv/aot"]
 cuda = ["powdr-openvm/cuda", "powdr-openvm-riscv/cuda"]
+# Route APC optimization through the apc-optimizer (Lean4) verified optimizer; runtime-gated by
+# `POWDR_USE_LEAN_OPTIMIZER`. Off by default.
+lean-optimizer = ["powdr-openvm-riscv/lean-optimizer"]
 
 [[bin]]
 name = "powdr_openvm_riscv"
