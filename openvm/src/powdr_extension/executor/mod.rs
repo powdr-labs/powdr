@@ -452,6 +452,73 @@ unsafe fn execute_e2_impl<F: PrimeField32, CTX: MeteredExecutionCtxTrait, ISA: O
     execute_e12_impl::<F, CTX, ISA>(&pre_compute.data, exec_state);
 }
 
+/// Saved pre-call state of a dropped memory slot:
+/// `(address_space, pointer, access timestamp, data)`.
+type DroppedSlotCheckpoint = (u32, u32, u32, [u8; DROPPED_SLOT_CELLS]);
+
+/// Dropped slots are fp-relative register slots: `DEFAULT_BLOCK_SIZE` (= 4)
+/// u8 cells, 4-aligned, so each occupies exactly one touched-memory metadata
+/// entry.
+const DROPPED_SLOT_CELLS: usize = 4;
+
+impl<ISA: OpenVmISA> PowdrExecutor<ISA> {
+    /// Checkpoints the pre-call state (touch timestamp + data) of the APC's
+    /// dropped memory slots, so [`Self::rollback_dropped_slots`] can elide
+    /// this call's accesses to them from the offline memory argument after
+    /// the block has executed. The optimizer removed these slots' boundary
+    /// bus interactions from the APC AIR (see
+    /// [`powdr_autoprecompiles::DroppedMemorySlot`]), so the memory system
+    /// must not see them touched by this call either -- otherwise the memory
+    /// bus does not balance.
+    fn checkpoint_dropped_slots(&self, memory: &TracingMemory) -> Vec<DroppedSlotCheckpoint> {
+        let slots = &self.apc.dropped_memory_slots;
+        if slots.is_empty() {
+            return Vec::new();
+        }
+        debug_assert_eq!(
+            ISA::drop_hint_config().map(|config| config.stride),
+            Some(DROPPED_SLOT_CELLS as u64),
+            "dropped-slot elision assumes 4-cell, 4-aligned register slots"
+        );
+        let fp = ISA::read_fp_untraced(memory.data());
+        slots
+            .iter()
+            .map(|slot| {
+                let pointer = fp
+                    + u32::try_from(slot.fp_offset).expect("dropped slot offset must fit in u32");
+                debug_assert_eq!(pointer % DROPPED_SLOT_CELLS as u32, 0);
+                let timestamp = memory.access_timestamp(slot.address_space, pointer);
+                // SAFETY: register address spaces use u8 cells, and a register
+                // slot is exactly `DROPPED_SLOT_CELLS` of them.
+                let data = unsafe {
+                    memory
+                        .data()
+                        .read::<u8, DROPPED_SLOT_CELLS>(slot.address_space, pointer)
+                };
+                (slot.address_space, pointer, timestamp, data)
+            })
+            .collect()
+    }
+
+    /// Restores the dropped slots' data and touch timestamps to their
+    /// checkpointed pre-call state, making this call's accesses to them
+    /// invisible to the offline memory argument. The global timestamp counter
+    /// is untouched: the elided accesses still consume their timestamps, as
+    /// the APC AIR expects. Sound because the drop conditions prove the
+    /// slots' post-block values are never read.
+    fn rollback_dropped_slots(memory: &mut TracingMemory, checkpoints: &[DroppedSlotCheckpoint]) {
+        for &(address_space, pointer, timestamp, data) in checkpoints {
+            // SAFETY: same cell type and layout as the checkpoint read.
+            unsafe {
+                memory
+                    .data
+                    .write::<u8, DROPPED_SLOT_CELLS>(address_space, pointer, data)
+            };
+            memory.set_access_timestamp(address_space, pointer, timestamp);
+        }
+    }
+}
+
 // Preflight execution is implemented separately for CPU and GPU backends, because they use a different arena from `self`
 // TODO: reduce code duplication between the two implementations. The main issue now is we need to use the concrete arena types.
 impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
@@ -487,6 +554,10 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
         let original_arenas =
             original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
 
+        // Checkpoint the dropped memory slots, whose accesses this call must
+        // not expose to the offline memory argument.
+        let dropped_slot_checkpoints = self.checkpoint_dropped_slots(memory);
+
         // execute the original instructions one by one
         for (instruction, cached_meta) in self
             .apc
@@ -515,6 +586,8 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, MatrixRecordArena<BabyBear>>
 
             executor.execute(state, &instruction.inner)?;
         }
+
+        Self::rollback_dropped_slots(memory, &dropped_slot_checkpoints);
 
         // Update the real number of calls to the APC
         original_arenas.number_of_calls += 1;
@@ -561,6 +634,10 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExec
         let original_arenas =
             original_arenas.ensure_initialized(apc_call_count, &self.air_by_opcode_id, &self.apc);
 
+        // Checkpoint the dropped memory slots, whose accesses this call must
+        // not expose to the offline memory argument.
+        let dropped_slot_checkpoints = self.checkpoint_dropped_slots(memory);
+
         // execute the original instructions one by one
         for (instruction, cached_meta) in
             self.apc.instructions().zip(&self.cached_instructions_meta)
@@ -587,6 +664,8 @@ impl<ISA: OpenVmISA> PreflightExecutor<BabyBear, DenseRecordArena> for PowdrExec
 
             executor.execute(state, &instruction.inner)?;
         }
+
+        Self::rollback_dropped_slots(memory, &dropped_slot_checkpoints);
 
         // Update the real number of calls to the APC
         original_arenas.number_of_calls += 1;

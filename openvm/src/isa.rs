@@ -141,4 +141,16 @@ pub trait OpenVmISA: Send + Sync + Clone + 'static + Default {
     fn drop_hint_config() -> Option<DropHintConfig> {
         None
     }
+
+    /// Reads the current frame-pointer value from memory, without tracing the
+    /// access. Used by the APC executor to resolve the absolute addresses of
+    /// dropped fp-relative memory slots (see
+    /// [`powdr_autoprecompiles::DroppedMemorySlot`]).
+    ///
+    /// Only called when an APC carries dropped slots, which requires
+    /// [`Self::drop_hint_config`] to be `Some`; ISAs without drop hints keep
+    /// the default.
+    fn read_fp_untraced(_memory: &openvm_circuit::system::memory::online::GuestMemory) -> u32 {
+        unimplemented!("this ISA does not emit drop hints, so it has no frame pointer to read")
+    }
 }
