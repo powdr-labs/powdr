@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784206753596,
+  "lastUpdate": 1784331480238,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416635,6 +416635,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 38479775578,
             "range": "± 738021110",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "63f166f09be96cd4589678a79d2443422304b3ef",
+          "message": "Add apc-optimizer FFI crate + opt-in `lean-optimizer` integration (#3789)\n\nSplits mergeable groundwork out of #3784: the FFI crate **plus** a\nminimal opt-in integration into `optimize`, so the apc-optimizer (Lean4\nverified optimizer) can be exercised via the CLI / tests. Built on the\nexplicit `next_free_id` FFI contract from\n[apc-optimizer#130](https://github.com/powdr-labs/apc-optimizer/pull/130)\n(merged). The \"derived columns referencing removed columns\" work stays\nin a follow-up.\n\n## What's here\n- **`powdr-autoprecompiles-lean-ffi`**: links the Lean apc-optimizer as\na static library, exposes `optimize_json(&str) -> Result<String,\nString>`. No powdr deps (avoids a cycle); **excluded from the default\nworkspace**, so CI never builds it. `build.rs` pins `APC_OPTIMIZER_REV`\nto apc-optimizer `main` (`82205ee`).\n- **Opt-in integration** (`autoprecompiles/src/optimizer.rs` + the gated\n`optimizer/lean.rs` module): `optimize` routes through the Lean library\nwhen the `lean-optimizer` feature is on (forwarded openvm → openvm-riscv\n→ cli) **and** `POWDR_USE_LEAN_OPTIMIZER=1`. Off by default; native path\nbyte-for-byte unchanged.\n- Uses the `next_free_id` contract: powdr sends `{machine, bus_map,\nnext_free_id}` (its allocator cursor), the optimizer draws the ids of\nany columns it introduces from there — so they never collide with\nexisting or removed ids — and returns `{machine, next_free_id}`; powdr\nreseeds its `ColumnAllocator` from that value directly, **no rescanning\nof the returned machine**.\n- **Feature-gated test**: `lean_ffi_roundtrip`.\n\nThe integration footprint outside the crate is small: `optimizer.rs` +\n`optimizer/lean.rs` + the `lean-optimizer` feature plumbing. `lib.rs`,\n`constraint-solver`, and `tests/optimizer.rs` are untouched vs `main`.\n\n## Not here (follow-up)\nThe derived-columns-referencing-removed-columns case (leanr#64):\n`Apc::new` subs retention, `trace_handler.rs`, `cpu/mod.rs`. Assuming\nderived columns only reference surviving columns, witgen is already\ncorrect on main (`evaluate_computation_method`), so this path works for\nthe common case.\n\n## Testing\nPrereqs: Lean toolchain on PATH via\n[elan](https://github.com/leanprover/elan) (`lean`/`lake`) + `git`;\n`build.rs` clones the pinned rev, or set `APC_OPTIMIZER_DIR` to a local\ncheckout. First build is slow (mathlib). A missing Lean toolchain fails\nup front with an install hint instead of a raw spawn error.\n```bash\n# Build the FFI crate + its roundtrip test (excluded crate → --manifest-path):\ncargo test --manifest-path autoprecompiles-lean-ffi/Cargo.toml --release\n\n# Run a snapshot test through the Lean optimizer (single instructions are the simplest):\nPOWDR_USE_LEAN_OPTIMIZER=1 cargo test -p powdr-openvm-riscv --features lean-optimizer \\\n  -- single_add_1 single_loadbu\n\n# From the CLI: build with --features lean-optimizer, run with POWDR_USE_LEAN_OPTIMIZER=1.\n```\n\n**Snapshot tests are expected to FAIL under the Lean flag right now —\nthat's fine.** The apc-optimizer produces a differently-shaped\n(re-encoded) circuit than the committed native `apc_snapshots`, so e.g.\n`single_add_1` / `single_loadbu` diff (the Lean output carries `rnc..`\nre-encoding derived columns). Snapshots will be handled in a later\nchange. Without the flag, everything passes as usual.\n\n## Verified locally\n`lean-optimizer` builds + links the Lean archive at the merged #130 rev;\nnative and with-feature clippy clean; `cargo fmt --check` clean; FFI\ncrate tests + `lean_ffi_roundtrip` pass against the `{machine,\nnext_free_id}` interface; the Lean path runs end-to-end (`single_add_1`\ndiffers from native, as expected). CI-safe: crate excluded, feature off\nby default, all new tests `#[cfg(feature = \"lean-optimizer\")]`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-16T12:58:06Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/63f166f09be96cd4589678a79d2443422304b3ef"
+        },
+        "date": 1784331470192,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 22149637173,
+            "range": "± 415328031",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 41989750078,
+            "range": "± 503043213",
             "unit": "ns/iter"
           }
         ]
