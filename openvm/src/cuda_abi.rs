@@ -22,12 +22,13 @@ extern "C" {
     /// Each thread processes rows; for rows >= num_apc_calls, writes zeros.
     /// Safety: All device pointers must be valid for the specified lengths.
     pub fn _apc_apply_derived_expr(
-        d_output: *mut BabyBear,         // APC trace matrix (column-major)
-        output_height: usize,            // rows (height)
-        num_apc_calls: i32,              // number of valid rows
-        d_specs: *const DerivedExprSpec, // device array of derived expression specs
-        n_cols: usize,                   // number of derived columns
-        d_bytecode: *const u32,          // device bytecode buffer
+        d_output: *mut BabyBear,             // APC trace matrix (column-major)
+        output_height: usize,                // rows (height)
+        num_apc_calls: i32,                  // number of valid rows
+        d_specs: *const DerivedExprSpec,     // device array of derived expression specs
+        n_cols: usize,                       // number of derived columns
+        d_bytecode: *const u32,              // device bytecode buffer
+        d_original_airs: *const OriginalAir, // dummy AIR traces read by OP_PUSH_DUMMY refs
     ) -> i32;
 
     /// Launches the GPU kernel that applies bus interactions to periphery histograms.
@@ -95,9 +96,9 @@ pub struct DerivedExprSpec {
 }
 
 pub fn apc_tracegen(
-    output: &mut DeviceMatrix<BabyBear>,      // column-major
-    original_airs: DeviceBuffer<OriginalAir>, // device array of AIR metadata
-    substitutions: DeviceBuffer<Subst>,       // device array of all substitutions
+    output: &mut DeviceMatrix<BabyBear>,       // column-major
+    original_airs: &DeviceBuffer<OriginalAir>, // device array of AIR metadata (shared with derived kernel)
+    substitutions: DeviceBuffer<Subst>,        // device array of all substitutions
     num_apc_calls: usize,
 ) -> Result<(), CudaError> {
     let output_height = output.height();
@@ -120,6 +121,7 @@ pub fn apc_apply_derived_expr(
     output: &mut DeviceMatrix<BabyBear>,
     specs: DeviceBuffer<DerivedExprSpec>,
     bytecode: DeviceBuffer<u32>,
+    original_airs: &DeviceBuffer<OriginalAir>, // dummy AIR traces read by OP_PUSH_DUMMY refs
     num_apc_calls: usize,
 ) -> Result<(), CudaError> {
     unsafe {
@@ -130,6 +132,7 @@ pub fn apc_apply_derived_expr(
             specs.as_ptr(),
             specs.len(),
             bytecode.as_ptr(),
+            original_airs.as_ptr(),
         ))
     }
 }
@@ -146,6 +149,7 @@ pub enum OpCode {
     InvOrZero = 6, // Invert the top value on the stack if it is not zero, otherwise pop and push zero.
     JmpIfNonzero = 7, // Pop the top value; if nonzero, jump to the following target index. Lowers `IfEqZero`.
     Jmp = 8,          // Unconditionally jump to the following target index.
+    PushDummy = 9, // Push a value read straight from an original (dummy) AIR trace. Followed by three operands: air index, source column, base row. Lets derived columns read inputs (surviving or optimizer-removed) without staging them in the APC buffer.
 }
 
 /// GPU device representation of a bus interaction.

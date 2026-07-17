@@ -7,12 +7,7 @@
 // Types
 // ============================================================================================
 
-struct OriginalAir {
-    int width;               // number of columns
-    int height;              // number of rows (Ha)
-    const Fp* buffer;        // column-major base: col*height + row
-    int row_block_size;      // stride between used rows
-};
+// `OriginalAir` is defined in expr_eval.cuh (shared with the derived-expression evaluator).
 
 struct Subst {
     int air_index; // index into d_original_airs
@@ -75,18 +70,21 @@ __global__ void apc_apply_derived_expr_kernel(
     int num_apc_calls,           // number of valid rows
     const DerivedExprSpec* __restrict__ d_specs, // derived expression specs
     size_t n_cols,               // number of derived columns
-    const uint32_t* __restrict__ d_bytecode // shared bytecode buffer
+    const uint32_t* __restrict__ d_bytecode, // shared bytecode buffer
+    const OriginalAir* __restrict__ d_original_airs // dummy AIR traces read by OP_PUSH_DUMMY
 ) {
     const size_t total_threads = (size_t)gridDim.x * (size_t)blockDim.x;
     const size_t tid = (size_t)blockIdx.x * (size_t)blockDim.x + (size_t)threadIdx.x;
 
     for (size_t r = tid; r < H; r += total_threads) {
         if (r < (size_t)num_apc_calls) {
-            // Compute and write each derived column for this row
+            // Compute and write each derived column for this row. Inputs are read straight from the
+            // original (dummy) AIR traces via OP_PUSH_DUMMY, so both surviving and optimizer-removed
+            // columns resolve without being staged in the APC buffer.
             for (size_t i = 0; i < n_cols; ++i) {
                 const DerivedExprSpec spec = d_specs[i];
                 const size_t col_base = (size_t)spec.col_base;
-                const Fp v = eval_arg(spec.span, d_bytecode, d_output, r);
+                const Fp v = eval_arg(spec.span, d_bytecode, d_output, r, d_original_airs);
                 d_output[col_base + r] = v;
             }
         } else {
@@ -109,7 +107,8 @@ extern "C" int _apc_apply_derived_expr(
     int                num_apc_calls,
     const DerivedExprSpec* d_specs,
     size_t             n_cols,
-    const uint32_t*    d_bytecode
+    const uint32_t*    d_bytecode,
+    const OriginalAir* d_original_airs
 ) {
     if (n_cols == 0) return 0;
     const int block_x = 256; // more lanes to cover rows
@@ -118,7 +117,7 @@ extern "C" int _apc_apply_derived_expr(
     if (g == 0u) g = 1u;
     const dim3 grid(g, 1, 1);
     apc_apply_derived_expr_kernel<<<grid, block>>>(
-        d_output, H, num_apc_calls, d_specs, n_cols, d_bytecode
+        d_output, H, num_apc_calls, d_specs, n_cols, d_bytecode, d_original_airs
     );
     return (int)cudaGetLastError();
 }
