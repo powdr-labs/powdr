@@ -1,0 +1,38 @@
+Total cells: 15.97B
+Cells by AIR:
+air_name
+KeccakfPermAir                                                                         5399826432
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                                          2703974400
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>                              2120695808
+PowdrAir<BabyBearParameters>                                                           1733559862
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>                               1222705152
+ProgramAir                                                                              408944640
+MemoryMerkleAir<8>                                                                      398524416
+VmAirWrapper<Rv32BaseAluAdapterAir, ShiftCoreAir<4, 8>                                  373608448
+RangeTupleCheckerAir<2>                                                                 245366784
+PersistentBoundaryAir<8>                                                                211964928
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>                                173002752
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>                               146688128
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                                        88137728
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>                           88080384
+XorinVmAir                                                                               86925056
+Rv32HintStoreAir                                                                         84025856
+VmAirWrapper<Rv32VecHeapAdapterAir<1, 16, 16, 4, 4>, FieldExpressionCoreAir>             66391296
+VmAirWrapper<Rv32IsEqualModAdapterAir<2, 8, 4, 32>, ModularIsEqualCoreAir<32, 4, 8>      58488768
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>                             57282048
+KeccakfOpAir                                                                             53353344
+BitwiseOperationLookupAir<8>                                                             46006272
+VmAirWrapper<Rv32MultAdapterAir, MulHCoreAir<4, 8>                                       43411758
+VariableRangeCheckerAir                                                                  40894464
+VmAirWrapper<Rv32VecHeapAdapterAir<2, 16, 16, 4, 4>, FieldExpressionCoreAir>             40181504
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>                               39665664
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>                                    20336640
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>                        15750144
+VmAirWrapper<Rv32MultAdapterAir, DivRemCoreAir<4, 8>                                      1215872
+VmAirWrapper<Rv32VecHeapAdapterAir<2, 8, 8, 4, 4>, FieldExpressionCoreAir>                1197178
+Sha2BlockHasherVmAir<Sha256Config>                                                         175104
+Sha2MainAir<Sha256Config>                                                                    6816
+PhantomAir                                                                                   2478
+VmConnectorAir                                                                                468
+Name: cells, dtype: int64
+Saving plot to reth/trace_cells_apc100.png

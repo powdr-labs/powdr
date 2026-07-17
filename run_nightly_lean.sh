@@ -15,6 +15,7 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$REPO_ROOT"
 
 # --- Workflow `env:` block + the branch's Lean toggles (hardcoded on here) ----
+export RUST_MIN_STACK=536870912
 export CARGO_TERM_COLOR=always
 export RUST_BACKTRACE=1
 export JEMALLOC_SYS_WITH_MALLOC_CONF="retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
