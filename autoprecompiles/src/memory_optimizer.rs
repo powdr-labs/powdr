@@ -55,6 +55,23 @@ struct MemoryDropMatcher<T, V> {
     address_space: GroupedExpression<T, V>,
     address: GroupedExpression<T, V>,
     timestamp: GroupedExpression<T, V>,
+    /// Concrete fp-relative offset of the hint's base slot (`address = fp +
+    /// fp_offset`), if recorded at lowering time. Drops whose hints lack it are
+    /// never applied: the runtime could not identify the slot to elide.
+    fp_offset: Option<u64>,
+}
+
+/// A memory slot removed from the machine by
+/// [`drop_internal_memory_accesses`], identified in runtime terms so the APC
+/// executor can elide the slot's accesses from the offline memory argument
+/// (the AIR no longer carries its boundary bus interactions).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DroppedMemorySlot {
+    /// The address space of the slot.
+    pub address_space: u32,
+    /// The slot's address relative to the frame pointer at block entry
+    /// (`address = fp + fp_offset`).
+    pub fp_offset: u64,
 }
 
 /// Removes the memory access for slots whose access is *fully internal* to the
@@ -77,6 +94,11 @@ struct MemoryDropMatcher<T, V> {
 /// prevented pairing) are conservatively skipped, never compromising soundness.
 /// Everything is keyed per address space. Redundant or unmatched hints are
 /// ignored.
+///
+/// Returns the modified system together with the list of slots whose boundary
+/// pair was removed. The caller must ensure the APC executor elides exactly
+/// these slots' accesses from the memory argument at runtime, or the memory
+/// bus will not balance.
 pub fn drop_internal_memory_accesses<
     T: FieldElement,
     V: Hash + Eq + Clone + Ord + Display,
@@ -84,32 +106,49 @@ pub fn drop_internal_memory_accesses<
 >(
     mut system: ConstraintSystem<T, V>,
     memory_bus_id: Option<u64>,
-) -> ConstraintSystem<T, V> {
+) -> (ConstraintSystem<T, V>, Vec<DroppedMemorySlot>) {
     let Some(memory_bus_id) = memory_bus_id else {
-        return system;
+        return (system, Vec::new());
     };
 
-    // Decode the drop hints. Each must carry exactly the three argument
-    // expressions `(address_space, address, timestamp)`.
-    // Malformed hints panics.
+    // Decode the drop hints. Each must carry the three argument expressions
+    // `(address_space, address, timestamp)`, optionally followed by a constant
+    // fp-relative offset. Malformed hints panic.
     let drops = system
         .hints
         .iter()
         .filter_map(|hint| {
             let kind = MemoryDropKind::try_from(hint.kind).ok()?;
-            let [address_space, address, timestamp] = &hint.args[..] else {
-                panic!("Malformed memory drop hint: expected exactly three arguments");
+            let (exprs, fp_offset) = match &hint.args[..] {
+                [address_space, address, timestamp] => ([address_space, address, timestamp], None),
+                [address_space, address, timestamp, offset] => (
+                    [address_space, address, timestamp],
+                    Some(
+                        offset
+                            .try_to_number()
+                            .expect("Memory drop hint fp_offset must be a constant")
+                            .to_arbitrary_integer()
+                            .try_into()
+                            .expect("Memory drop hint fp_offset must fit in u64"),
+                    ),
+                ),
+                args => panic!(
+                    "Malformed memory drop hint: expected 3 or 4 arguments, got {}",
+                    args.len()
+                ),
             };
+            let [address_space, address, timestamp] = exprs;
             Some(MemoryDropMatcher {
                 kind,
                 address_space: address_space.clone(),
                 address: address.clone(),
                 timestamp: timestamp.clone(),
+                fp_offset,
             })
         })
         .collect::<Vec<_>>();
     if drops.is_empty() {
-        return system;
+        return (system, Vec::new());
     }
 
     // Count, per variable, in how many distinct items (algebraic constraints and
@@ -140,7 +179,9 @@ pub fn drop_internal_memory_accesses<
     }
 
     let mut to_remove: HashSet<usize> = HashSet::new();
-    // Iteration order is irrelevant: we only accumulate into the `to_remove` set.
+    let mut dropped_slots: Vec<DroppedMemorySlot> = Vec::new();
+    // Iteration order is irrelevant: we only accumulate into the `to_remove` set
+    // (and `dropped_slots`, which is sorted below).
     #[allow(clippy::iter_over_hash_type)]
     for (addr, interactions) in &slots {
         // We only act on the clean boundary shape: exactly one `GetPrevious` and
@@ -161,10 +202,11 @@ pub fn drop_internal_memory_accesses<
         let (set_new_index, set_new) = (set_new.0, &set_new.1);
 
         // Condition 2: the slot's last value is dropped, matched by address (per
-        // address space) and by a timestamp at or after the surviving write.
-        if !slot_is_dropped(addr, set_new.timestamp_limbs(), &drops) {
+        // address space) and by a timestamp at or after the surviving write. The
+        // match also yields the slot's runtime identity (fp-relative offset).
+        let Some(dropped_slot) = slot_is_dropped(addr, set_new.timestamp_limbs(), &drops) else {
             continue;
-        }
+        };
 
         // Condition 1: the previous value is used nowhere else.
         let previous_value_used = get_previous
@@ -178,6 +220,7 @@ pub fn drop_internal_memory_accesses<
 
         to_remove.insert(get_previous_index);
         to_remove.insert(set_new_index);
+        dropped_slots.push(dropped_slot);
     }
 
     log::debug!(
@@ -192,7 +235,10 @@ pub fn drop_internal_memory_accesses<
         .filter_map(|(i, bus)| (!to_remove.contains(&i)).then_some(bus))
         .collect();
 
-    system
+    // Deterministic order (the loop above iterates a HashMap).
+    dropped_slots.sort_unstable_by_key(|slot| (slot.address_space, slot.fp_offset));
+
+    (system, dropped_slots)
 }
 
 /// Returns whether `slot_addr`'s last value is dropped by one of the `drops`.
@@ -200,36 +246,58 @@ pub fn drop_internal_memory_accesses<
 /// `>=` for [`MemoryDropKind::MemorySlotDropFrom`]), and its timestamp must be at
 /// or after `set_new_timestamp` so that it refers to the surviving (last) write
 /// rather than to an earlier, since-overwritten value.
+/// On a match, returns the slot's runtime identity as a [`DroppedMemorySlot`];
+/// slots matched only by hints without a recorded `fp_offset` are not dropped
+/// (the runtime could not identify them for elision).
 fn slot_is_dropped<T: FieldElement, V: Clone + Ord + Eq + Hash>(
     slot_addr: &Address<T, V>,
     set_new_timestamp: &[GroupedExpression<T, V>],
     drops: &[MemoryDropMatcher<T, V>],
-) -> bool {
+) -> Option<DroppedMemorySlot> {
     // We expect a two-component address `[address_space, address]` and a single
     // timestamp limb; anything else is skipped conservatively.
     let [slot_address_space, slot_address] = &slot_addr.0[..] else {
-        return false;
+        return None;
     };
     let [set_new_timestamp] = set_new_timestamp else {
-        return false;
+        return None;
     };
-    drops.iter().any(|drop| {
+    let address_space: u32 = slot_address_space
+        .try_to_number()?
+        .to_arbitrary_integer()
+        .try_into()
+        .ok()?;
+    drops.iter().find_map(|drop| {
         if &drop.address_space != slot_address_space {
-            return false;
+            return None;
         }
-        let address_matches = match drop.kind {
-            MemoryDropKind::MemorySlotDrop => &drop.address == slot_address,
+        let base_offset = drop.fp_offset?;
+        let fp_offset = match drop.kind {
+            MemoryDropKind::MemorySlotDrop => {
+                (&drop.address == slot_address).then_some(base_offset)?
+            }
             // `slot_address >= drop.address`, i.e. their difference is a known
-            // non-negative constant (same base, so the base cancels).
+            // non-negative constant (same base, so the base cancels). The
+            // slot's own offset is the hint's base offset plus that difference.
             MemoryDropKind::MemorySlotDropFrom => {
-                is_known_non_negative(&(slot_address.clone() - drop.address.clone()))
+                let delta = (slot_address.clone() - drop.address.clone()).try_to_number()?;
+                if !delta.is_in_lower_half() {
+                    return None;
+                }
+                base_offset
+                    + u64::try_from(delta.to_arbitrary_integer())
+                        .expect("non-negative address delta must fit in u64")
             }
         };
         // The drop must refer to the surviving (last) write: `drop.timestamp >=
         // set_new_timestamp`. This rejects a drop for an earlier value that was
         // later overwritten by a live write.
-        address_matches
-            && is_known_non_negative(&(drop.timestamp.clone() - set_new_timestamp.clone()))
+        is_known_non_negative(&(drop.timestamp.clone() - set_new_timestamp.clone())).then_some(
+            DroppedMemorySlot {
+                address_space,
+                fp_offset,
+            },
+        )
     })
 }
 
@@ -510,8 +578,20 @@ mod tests {
         }
     }
 
-    fn drop_hint(kind: MemoryDropKind, address_space: u64, address: Ge, timestamp: Ge) -> Hint<Ge> {
-        Hint::new(kind as u32, vec![num(address_space), address, timestamp])
+    /// A drop hint whose base slot is at `fp + fp_offset` (the `address`
+    /// expression must be consistent with `fp_offset`, as the lowering
+    /// guarantees in production).
+    fn drop_hint(
+        kind: MemoryDropKind,
+        address_space: u64,
+        address: Ge,
+        timestamp: Ge,
+        fp_offset: u64,
+    ) -> Hint<Ge> {
+        Hint::new(
+            kind as u32,
+            vec![num(address_space), address, timestamp, num(fp_offset)],
+        )
     }
 
     #[test]
@@ -547,12 +627,14 @@ mod tests {
                     1,
                     fp.clone() + num(8),
                     t.clone() + num(1),
+                    8,
                 ),
                 drop_hint(
                     MemoryDropKind::MemorySlotDrop,
                     1,
                     fp.clone() + num(12),
                     t.clone() + num(1),
+                    12,
                 ),
                 // C's drop is at t+2, but its write is at t+5: must not match.
                 drop_hint(
@@ -560,6 +642,7 @@ mod tests {
                     1,
                     fp.clone() + num(16),
                     t.clone() + num(2),
+                    16,
                 ),
                 // Covers every slot at offset >= 4 in address space 1.
                 drop_hint(
@@ -567,11 +650,12 @@ mod tests {
                     1,
                     fp.clone() + num(4),
                     t.clone() + num(1),
+                    4,
                 ),
             ],
         };
 
-        let result =
+        let (result, dropped_slots) =
             drop_internal_memory_accesses::<GoldilocksField, V, TestMem>(system, Some(MEM_BUS));
 
         let remaining: HashSet<Ge> = result
@@ -591,6 +675,46 @@ mod tests {
         for kept in ["old_b", "new_b", "old_c", "new_c", "old_e", "new_e"] {
             assert!(remaining.contains(&var(kept)), "{kept} should be kept");
         }
+
+        // The dropped slots are reported with their runtime identity: A at
+        // fp+8 (exact hint), D at fp+20 (DropFrom base 4 + delta 16).
+        assert_eq!(
+            dropped_slots,
+            vec![
+                DroppedMemorySlot {
+                    address_space: 1,
+                    fp_offset: 8,
+                },
+                DroppedMemorySlot {
+                    address_space: 1,
+                    fp_offset: 20,
+                },
+            ]
+        );
+    }
+
+    /// A hint without a recorded fp_offset (legacy 3-arg encoding) must not
+    /// drop: the runtime could not identify the slot to elide.
+    #[test]
+    fn does_not_drop_without_fp_offset() {
+        let fp = var("fp");
+        let t = var("t");
+        let system = ConstraintSystem {
+            algebraic_constraints: vec![],
+            bus_interactions: vec![
+                mem(-1, 1, fp.clone() + num(8), var("old_a"), t.clone()),
+                mem(1, 1, fp.clone() + num(8), var("new_a"), t.clone() + num(1)),
+            ],
+            derived_variables: vec![],
+            hints: vec![Hint::new(
+                MemoryDropKind::MemorySlotDrop as u32,
+                vec![num(1), fp.clone() + num(8), t.clone() + num(1)],
+            )],
+        };
+        let (result, dropped_slots) =
+            drop_internal_memory_accesses::<GoldilocksField, V, TestMem>(system, Some(MEM_BUS));
+        assert_eq!(result.bus_interactions.len(), 2);
+        assert!(dropped_slots.is_empty());
     }
 
     #[test]
@@ -606,8 +730,9 @@ mod tests {
             derived_variables: vec![],
             hints: vec![],
         };
-        let result =
+        let (result, dropped_slots) =
             drop_internal_memory_accesses::<GoldilocksField, V, TestMem>(system, Some(MEM_BUS));
         assert_eq!(result.bus_interactions.len(), 2);
+        assert!(dropped_slots.is_empty());
     }
 }

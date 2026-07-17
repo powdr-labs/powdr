@@ -54,6 +54,7 @@ mod stats_logger;
 pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
 pub use drop_hints::DropHint;
+pub use memory_optimizer::DroppedMemorySlot;
 pub use pgo::{PgoConfig, PgoData, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
@@ -248,6 +249,11 @@ pub struct Apc<T, I, A, V> {
     pub subs: Vec<Vec<Substitution>>,
     /// The optimistic constraints to be satisfied for this apc to be run
     pub optimistic_constraints: OptimisticConstraints<A, V>,
+    /// Memory slots whose boundary accesses were removed from the machine by
+    /// the drop-hint optimization. The APC executor must elide exactly these
+    /// slots' accesses from the memory argument at runtime.
+    #[serde(default)]
+    pub dropped_memory_slots: Vec<DroppedMemorySlot>,
 }
 
 impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
@@ -276,6 +282,7 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
         machine: SymbolicMachine<T>,
         optimistic_constraints: OptimisticConstraints<A, V>,
         column_allocator: &ColumnAllocator,
+        dropped_memory_slots: Vec<DroppedMemorySlot>,
     ) -> Self {
         // Get all poly_ids in the machine
         let all_references = machine
@@ -313,6 +320,7 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
             machine,
             subs,
             optimistic_constraints,
+            dropped_memory_slots,
         }
     }
 }
@@ -417,14 +425,15 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.bus_interactions.len() as u64);
 
-    let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
-        machine,
-        vm_config.bus_interaction_handler,
-        degree_bound,
-        &vm_config.bus_map,
-        column_allocator,
-        &mut export_options,
-    )?;
+    let (machine, column_allocator, dropped_memory_slots) =
+        optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
+            machine,
+            vm_config.bus_interaction_handler,
+            degree_bound,
+            &vm_config.bus_map,
+            column_allocator,
+            &mut export_options,
+        )?;
 
     // add guards to constraints that are not satisfied by zeroes
     let (machine, column_allocator) = add_guards(machine, column_allocator);
@@ -440,7 +449,13 @@ pub fn build<A: Adapter>(
     let pc_constraints = superblock_pc_constraints::<A>(&block);
     let optimistic_constraints = OptimisticConstraints::from_constraints(pc_constraints);
 
-    let apc = Apc::new(block, machine, optimistic_constraints, &column_allocator);
+    let apc = Apc::new(
+        block,
+        machine,
+        optimistic_constraints,
+        &column_allocator,
+        dropped_memory_slots,
+    );
 
     if export_options.export_requested() {
         export_options.export_apc::<A>(&apc, None, &vm_config.bus_map);

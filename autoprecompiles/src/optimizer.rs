@@ -16,7 +16,9 @@ use powdr_number::KnownField;
 use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
 use crate::export::ExportOptions;
-use crate::memory_optimizer::{drop_internal_memory_accesses, MemoryBusInteraction};
+use crate::memory_optimizer::{
+    drop_internal_memory_accesses, DroppedMemorySlot, MemoryBusInteraction,
+};
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::symbolic_machine::{
     constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
@@ -44,7 +46,10 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
     bus_map: &BusMap<BusTypes>,
     mut column_allocator: ColumnAllocator,
     export_options: &mut ExportOptions,
-) -> Result<(SymbolicMachine<T>, ColumnAllocator), crate::constraint_optimizer::Error>
+) -> Result<
+    (SymbolicMachine<T>, ColumnAllocator, Vec<DroppedMemorySlot>),
+    crate::constraint_optimizer::Error,
+>
 where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
@@ -64,7 +69,8 @@ where
         let (optimized, next_free_id) =
             lean::optimize(&machine, bus_map, column_allocator.next_poly_id);
         column_allocator.next_poly_id = next_free_id;
-        return Ok((optimized, column_allocator));
+        // The Lean optimizer does not apply memory drops.
+        return Ok((optimized, column_allocator, Vec::new()));
     }
 
     let mut stats_logger = StatsLogger::start(&machine);
@@ -152,12 +158,11 @@ where
     // almost every otherwise-valid drop. Inlining unifies the timestamp (and fp)
     // columns to a single base, so the gate can actually be evaluated. The
     // disconnected-column removal below prunes the orphaned read columns.
-    let constraint_system: IndexedConstraintSystem<_, _> =
-        drop_internal_memory_accesses::<_, _, MemoryBus>(
-            constraint_system.into(),
-            bus_map.get_bus_id(&BusType::Memory),
-        )
-        .into();
+    let (constraint_system, dropped_memory_slots) = drop_internal_memory_accesses::<_, _, MemoryBus>(
+        constraint_system.into(),
+        bus_map.get_bus_id(&BusType::Memory),
+    );
+    let constraint_system: IndexedConstraintSystem<_, _> = constraint_system.into();
     stats_logger.log("dropping internal memory accesses", &constraint_system);
 
     let constraint_system = constraint_optimizer::remove_disconnected_columns(
@@ -236,6 +241,7 @@ where
     Ok((
         constraint_system_to_symbolic_machine(constraint_system),
         column_allocator,
+        dropped_memory_slots,
     ))
 }
 

@@ -196,12 +196,13 @@ pub fn lower_memory_drops<F: FieldElement>(
                     (MemoryDropKind::MemorySlotDrop, *n, &context.timestamp_after)
                 }
             };
-            let offset = F::from(index as u64 * register_stride);
+            let fp_offset = index as u64 * register_stride;
             drops.push(MemoryDrop {
                 kind,
                 address_space: address_space.clone(),
-                address: fp.clone() + AlgebraicExpression::Number(offset),
+                address: fp.clone() + AlgebraicExpression::Number(F::from(fp_offset)),
                 timestamp: timestamp.clone(),
+                fp_offset: Some(fp_offset),
             });
         }
     }

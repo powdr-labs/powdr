@@ -22,6 +22,7 @@ pub fn convert_apc_field_type<T, I, A, V, U>(
         machine: convert_machine_field_type(apc.machine, convert_field_element),
         subs: apc.subs,
         optimistic_constraints: apc.optimistic_constraints,
+        dropped_memory_slots: apc.dropped_memory_slots,
     }
 }
 
@@ -73,6 +74,7 @@ fn convert_memory_drop<T, U>(
         address_space: convert_expression(drop.address_space, convert_field_element),
         address: convert_expression(drop.address, convert_field_element),
         timestamp: convert_expression(drop.timestamp, convert_field_element),
+        fp_offset: drop.fp_offset,
     }
 }
 

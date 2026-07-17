@@ -150,6 +150,13 @@ pub struct MemoryDrop<T> {
     pub address_space: AlgebraicExpression<T>,
     pub address: AlgebraicExpression<T>,
     pub timestamp: AlgebraicExpression<T>,
+    /// The concrete fp-relative offset of the dropped slot (`address = fp +
+    /// fp_offset`), recorded at lowering time. Needed to identify the slot at
+    /// runtime so the APC executor can elide its accesses from the memory
+    /// argument; drops without it are never applied. `None` for machines
+    /// serialized before this field existed.
+    #[serde(default)]
+    pub fp_offset: Option<u64>,
 }
 
 impl<T> Children<AlgebraicExpression<T>> for MemoryDrop<T> {
@@ -336,7 +343,8 @@ pub fn symbolic_machine_to_constraint_system<P: FieldElement>(
 
 /// Encodes a [`MemoryDrop`] as an opaque [`Hint`]: the variant becomes the
 /// `kind` tag and the `(address_space, address, timestamp)` expressions become
-/// the args, in that order.
+/// the args, in that order. A known `fp_offset` is appended as a fourth,
+/// constant arg.
 fn memory_drop_to_hint<P: FieldElement>(
     drop: &MemoryDrop<P>,
 ) -> Hint<GroupedExpression<P, AlgebraicReference>> {
@@ -344,6 +352,10 @@ fn memory_drop_to_hint<P: FieldElement>(
         drop.kind as u32,
         drop.children()
             .map(algebraic_to_grouped_expression)
+            .chain(
+                drop.fp_offset
+                    .map(|offset| GroupedExpression::from_number(P::from(offset))),
+            )
             .collect(),
     )
 }
@@ -387,18 +399,29 @@ fn hint_to_memory_drop<P: FieldElement>(
 ) -> MemoryDrop<P> {
     let kind = MemoryDropKind::try_from(hint.kind)
         .unwrap_or_else(|k| panic!("Unknown memory drop kind: {k}"));
-    let [address_space, address, timestamp] =
-        hint.args.try_into().unwrap_or_else(|args: Vec<_>| {
-            panic!(
-                "Memory drop hint must have exactly 3 args, got {}",
-                args.len()
-            )
-        });
+    let mut args = hint.args;
+    let fp_offset = if args.len() == 4 {
+        let offset = args.pop().unwrap();
+        Some(
+            offset
+                .try_to_number()
+                .expect("Memory drop hint fp_offset must be a constant")
+                .to_arbitrary_integer()
+                .try_into()
+                .expect("Memory drop hint fp_offset must fit in u64"),
+        )
+    } else {
+        None
+    };
+    let [address_space, address, timestamp] = args.try_into().unwrap_or_else(|args: Vec<_>| {
+        panic!("Memory drop hint must have 3 or 4 args, got {}", args.len())
+    });
     MemoryDrop {
         kind,
         address_space: grouped_expression_to_algebraic(address_space),
         address: grouped_expression_to_algebraic(address),
         timestamp: grouped_expression_to_algebraic(timestamp),
+        fp_offset,
     }
 }
 
