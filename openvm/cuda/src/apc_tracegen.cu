@@ -7,8 +7,6 @@
 // Types
 // ============================================================================================
 
-// `OriginalAir` is defined in expr_eval.cuh (shared with the derived-expression evaluator).
-
 struct Subst {
     int air_index; // index into d_original_airs
     int col;      // source column within this AIR

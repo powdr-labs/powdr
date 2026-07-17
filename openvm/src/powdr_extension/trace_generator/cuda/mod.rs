@@ -138,9 +138,9 @@ fn emit_method(
 ///
 /// A derived column's method may reference both surviving APC columns and the "removed" columns the
 /// optimizer substituted out of the circuit. Both are read straight from the original (dummy) AIR
-/// traces via `PushDummy`, using `apc_poly_id_to_dummy` (poly id -> `(air_index, col, row)`), so no
-/// referenced column needs to be staged in the committed APC buffer. The write target of each new
-/// column is a committed column, looked up in `apc_poly_id_to_index`.
+/// traces via `PushDummy`, using the `(air_index, col, row)` location recorded in `subs_by_id` for
+/// every substituted column, so no referenced column needs to be staged in the committed APC buffer.
+/// The write target of each new column is a committed column, looked up in `apc_poly_id_to_index`.
 fn compile_derived_to_gpu(
     derived_columns: &[DerivedVariable<
         BabyBear,
@@ -148,15 +148,15 @@ fn compile_derived_to_gpu(
         AlgebraicExpression<BabyBear>,
     >],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
-    apc_poly_id_to_dummy: &BTreeMap<u64, (i32, i32, i32)>,
+    subs_by_id: &BTreeMap<u64, Subst>,
     apc_height: usize,
 ) -> (Vec<DerivedExprSpec>, Vec<u32>) {
     let emit_ref = |bc: &mut Vec<u32>, id: u64| {
-        let (air_index, col, row) = apc_poly_id_to_dummy[&id];
+        let sub = &subs_by_id[&id];
         bc.push(OpCode::PushDummy as u32);
-        bc.push(air_index as u32);
-        bc.push(col as u32);
-        bc.push(row as u32);
+        bc.push(sub.air_index as u32);
+        bc.push(sub.col as u32);
+        bc.push(sub.row as u32);
     };
 
     let mut specs = Vec::with_capacity(derived_columns.len());
@@ -318,81 +318,80 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             DeviceMatrix::<BabyBear>::with_capacity(height, apc_poly_id_to_index.len());
         output.buffer().fill_zero().unwrap();
 
-        // Prepare `OriginalAir` and `Subst` arrays, plus the dummy-trace location of every
-        // substituted column. `substitutions` fills the committed surviving columns; a derived
-        // column's method may also reference a column the optimizer substituted out of the circuit
-        // (absent from `main_columns()`), whose value still lives in the original instruction trace.
-        // Rather than staging those "removed" columns into scratch slots of the committed buffer, we
-        // record each substituted column's `(air_index, col, row)` in `apc_poly_id_to_dummy` and let
-        // the derived-expression evaluator read them straight from the dummy traces via `PushDummy`.
+        // Prepare `OriginalAir` metadata and, per `apc_poly_id`, the dummy-trace location of every
+        // substituted column as a `Subst` (`air_index`, `col`, `row`) plus its destination committed
+        // column `apc_col` — or `apc_col = -1` for a "removed" column the optimizer substituted out
+        // of the circuit (absent from `main_columns()`), which has no committed slot. A derived
+        // column's method may reference either kind; the derived-expression evaluator reads them
+        // straight from the dummy traces via `PushDummy`, so nothing is staged into the committed
+        // buffer. The surviving subset (`apc_col >= 0`) is copied into the trace by `apc_tracegen`.
         // (Any sub whose target is absent from `main_columns()` is, by construction of `Apc::new`,
         // exactly such a removed-but-referenced column.)
-        let mut apc_poly_id_to_dummy: BTreeMap<u64, (i32, i32, i32)> = BTreeMap::new();
-        let (airs, substitutions) = {
-            self.apc
-                // go through original instructions
-                .instructions()
-                // along with their substitutions
-                .zip_eq(self.apc.subs())
-                // map to `(air_name, substitutions)`
-                .filter_map(|(instr, subs)| {
-                    if subs.is_empty() {
-                        None
-                    } else {
-                        Some((&self.original_airs.opcode_to_air[&instr.inner.opcode], subs))
-                    }
-                })
-                // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
-                .into_group_map()
-                // go through each air and its substitutions
-                .iter()
-                .enumerate()
-                .fold(
-                    (Vec::new(), Vec::new()),
-                    |(mut airs, mut substitutions), (air_index, (air_name, subs_by_row))| {
-                        subs_by_row
-                            .iter()
-                            // enumerate over them to get the row index inside the air block
-                            .enumerate()
-                            .for_each(|(row, subs)| {
-                                for sub in subs.iter() {
-                                    let col = sub.original_poly_index as i32;
-                                    // Record the dummy-trace location for derived-column reads
-                                    // (covers both surviving and removed columns).
-                                    apc_poly_id_to_dummy.insert(
-                                        sub.apc_poly_id,
-                                        (air_index as i32, col, row as i32),
-                                    );
-                                    // Emit a `Subst` only for surviving (committed) columns; removed
-                                    // columns have no committed slot to fill.
-                                    if let Some(&apc_col) =
-                                        apc_poly_id_to_index.get(&sub.apc_poly_id)
-                                    {
-                                        substitutions.push(Subst {
-                                            air_index: air_index as i32,
-                                            col,
-                                            row: row as i32,
-                                            apc_col: apc_col as i32,
-                                        });
-                                    }
-                                }
-                            });
-
-                        // get the device dummy trace for this air
-                        let dummy_trace = &dummy_trace_by_air_name[*air_name];
-
-                        use openvm_stark_backend::prover::MatrixDimensions;
-                        airs.push(OriginalAir {
-                            width: dummy_trace.width() as i32,
-                            height: dummy_trace.height() as i32,
-                            buffer: dummy_trace.buffer().as_ptr(),
-                            row_block_size: subs_by_row.len() as i32,
+        let mut subs_by_id: BTreeMap<u64, Subst> = BTreeMap::new();
+        let airs = self
+            .apc
+            // go through original instructions
+            .instructions()
+            // along with their substitutions
+            .zip_eq(self.apc.subs())
+            // map to `(air_name, substitutions)`
+            .filter_map(|(instr, subs)| {
+                if subs.is_empty() {
+                    None
+                } else {
+                    Some((&self.original_airs.opcode_to_air[&instr.inner.opcode], subs))
+                }
+            })
+            // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
+            .into_group_map()
+            // go through each air and its substitutions
+            .iter()
+            .enumerate()
+            .fold(
+                Vec::new(),
+                |mut airs, (air_index, (air_name, subs_by_row))| {
+                    subs_by_row
+                        .iter()
+                        // enumerate over them to get the row index inside the air block
+                        .enumerate()
+                        .for_each(|(row, subs)| {
+                            for sub in subs.iter() {
+                                let apc_col = apc_poly_id_to_index
+                                    .get(&sub.apc_poly_id)
+                                    .map_or(-1, |&i| i as i32);
+                                subs_by_id.insert(
+                                    sub.apc_poly_id,
+                                    Subst {
+                                        air_index: air_index as i32,
+                                        col: sub.original_poly_index as i32,
+                                        row: row as i32,
+                                        apc_col,
+                                    },
+                                );
+                            }
                         });
 
-                        (airs, substitutions)
-                    },
-                )
-        };
+                    // get the device dummy trace for this air
+                    let dummy_trace = &dummy_trace_by_air_name[*air_name];
+
+                    use openvm_stark_backend::prover::MatrixDimensions;
+                    airs.push(OriginalAir {
+                        width: dummy_trace.width() as i32,
+                        height: dummy_trace.height() as i32,
+                        buffer: dummy_trace.buffer().as_ptr(),
+                        row_block_size: subs_by_row.len() as i32,
+                    });
+
+                    airs
+                },
+            );
+
+        // Only surviving columns (those with a committed slot) are copied into the trace.
+        let substitutions: Vec<Subst> = subs_by_id
+            .values()
+            .filter(|s| s.apc_col >= 0)
+            .copied()
+            .collect();
 
         // Send the airs and substitutions to device. `airs` is shared with the derived-expression
         // kernel below (which reads removed/surviving columns from the dummy traces), so the backing
@@ -407,7 +406,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
             &self.apc.machine.derived_columns,
             &apc_poly_id_to_index,
-            &apc_poly_id_to_dummy,
+            &subs_by_id,
             height,
         );
         // In practice `d_specs` is never empty, because we will always have `is_valid`
