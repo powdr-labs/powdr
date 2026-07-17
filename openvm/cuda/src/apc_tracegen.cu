@@ -7,11 +7,15 @@
 // Types
 // ============================================================================================
 
-struct Subst {
+struct Cell {
     int air_index; // index into d_original_airs
     int col;      // source column within this AIR
     int row;      // base row offset within the row-block
-    int apc_col;  // destination APC column
+};
+
+struct Subst {
+    Cell cell;      // source dummy-trace cell
+    uint32_t apc_col;  // destination APC column
 };
 
 extern "C" {
@@ -48,11 +52,11 @@ __global__ void apc_tracegen_kernel(
                 continue;
             }
 
-            const size_t air_idx = (size_t)sub.air_index;
+            const size_t air_idx = (size_t)sub.cell.air_index;
             const OriginalAir air = d_original_airs[air_idx];
             const Fp* __restrict__ src_base = air.buffer;
-            const size_t src_col_base = (size_t)sub.col * (size_t)air.height;
-            const size_t src_r = (size_t)sub.row + r * (size_t)air.row_block_size;
+            const size_t src_col_base = (size_t)sub.cell.col * (size_t)air.height;
+            const size_t src_r = (size_t)sub.cell.row + r * (size_t)air.row_block_size;
             d_output[dst_idx] = src_base[src_col_base + src_r];
         }
     }

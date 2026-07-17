@@ -13,7 +13,7 @@ extern "C" {
         d_output: *mut BabyBear,             // column-major
         output_height: usize,                // H_out
         d_original_airs: *const OriginalAir, // device array of AIR metadata
-        d_subs: *const Subst,                // device array of all substitutions
+        d_subs: *const Subst,                // device array of APC-targeted substitutions
         n_subs: usize,                       // number of substitutions
         num_apc_calls: i32,                  // number of APC calls
     ) -> i32;
@@ -75,15 +75,22 @@ pub struct OriginalAir {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct Subst {
+pub struct Cell {
     /// Index of the source AIR in `d_original_airs`
     pub air_index: i32,
     /// Source column within this AIR
     pub col: i32,
     /// Base row offset within the row-block
     pub row: i32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct Subst {
+    /// Source dummy-trace cell to copy from
+    pub cell: Cell,
     /// Destination APC column
-    pub apc_col: i32,
+    pub apc_col: u32,
 }
 
 #[repr(C)]

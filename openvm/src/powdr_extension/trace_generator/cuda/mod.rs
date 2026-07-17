@@ -21,7 +21,7 @@ use powdr_constraint_solver::constraint_system::{ComputationMethod, DerivedVaria
 use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
-    cuda_abi::{self, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
+    cuda_abi::{self, Cell, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
     extraction_utils::{OriginalAirs, OriginalVmConfig},
     isa::{IsaApc, OpenVmISA},
     powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas},
@@ -138,7 +138,7 @@ fn emit_method(
 ///
 /// A derived column's method may reference both surviving APC columns and the "removed" columns the
 /// optimizer substituted out of the circuit. Both are read straight from the original (dummy) AIR
-/// traces via `PushDummy`, using the `(air_index, col, row)` location recorded in `subs_by_id` for
+/// traces via `PushDummy`, using the `(air_index, col, row)` location recorded in `cell_by_id` for
 /// every substituted column, so no referenced column needs to be staged in the committed APC buffer.
 /// The write target of each new column is a committed column, looked up in `apc_poly_id_to_index`.
 fn compile_derived_to_gpu(
@@ -148,15 +148,15 @@ fn compile_derived_to_gpu(
         AlgebraicExpression<BabyBear>,
     >],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
-    subs_by_id: &BTreeMap<u64, Subst>,
+    cell_by_id: &BTreeMap<u64, Cell>,
     apc_height: usize,
 ) -> (Vec<DerivedExprSpec>, Vec<u32>) {
     let emit_ref = |bc: &mut Vec<u32>, id: u64| {
-        let sub = &subs_by_id[&id];
+        let cell = &cell_by_id[&id];
         bc.push(OpCode::PushDummy as u32);
-        bc.push(sub.air_index as u32);
-        bc.push(sub.col as u32);
-        bc.push(sub.row as u32);
+        bc.push(cell.air_index as u32);
+        bc.push(cell.col as u32);
+        bc.push(cell.row as u32);
     };
 
     let mut specs = Vec::with_capacity(derived_columns.len());
@@ -319,15 +319,12 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         output.buffer().fill_zero().unwrap();
 
         // Prepare `OriginalAir` metadata and, per `apc_poly_id`, the dummy-trace location of every
-        // substituted column as a `Subst` (`air_index`, `col`, `row`) plus its destination committed
-        // column `apc_col` — or `apc_col = -1` for a "removed" column the optimizer substituted out
-        // of the circuit (absent from `main_columns()`), which has no committed slot. A derived
-        // column's method may reference either kind; the derived-expression evaluator reads them
-        // straight from the dummy traces via `PushDummy`, so nothing is staged into the committed
-        // buffer. The surviving subset (`apc_col >= 0`) is copied into the trace by `apc_tracegen`.
-        // (Any sub whose target is absent from `main_columns()` is, by construction of `Apc::new`,
-        // exactly such a removed-but-referenced column.)
-        let mut subs_by_id: BTreeMap<u64, Subst> = BTreeMap::new();
+        // substituted column as a `Cell` (`air_index`, `col`, `row`). Some of those columns survive
+        // into the committed APC trace and get copied there by `apc_tracegen`; others are optimizer-
+        // removed inputs referenced only by derived expressions, which read them straight from the
+        // dummy traces via `PushDummy`. The APC destination is therefore tracked separately, only for
+        // the surviving subset that actually gets staged into the committed buffer.
+        let mut cell_by_id: BTreeMap<u64, Cell> = BTreeMap::new();
         let airs = self
             .apc
             // go through original instructions
@@ -356,16 +353,12 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
                         .enumerate()
                         .for_each(|(row, subs)| {
                             for sub in subs.iter() {
-                                let apc_col = apc_poly_id_to_index
-                                    .get(&sub.apc_poly_id)
-                                    .map_or(-1, |&i| i as i32);
-                                subs_by_id.insert(
+                                cell_by_id.insert(
                                     sub.apc_poly_id,
-                                    Subst {
+                                    Cell {
                                         air_index: air_index as i32,
                                         col: sub.original_poly_index as i32,
                                         row: row as i32,
-                                        apc_col,
                                     },
                                 );
                             }
@@ -387,10 +380,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             );
 
         // Only surviving columns (those with a committed slot) are copied into the trace.
-        let substitutions: Vec<Subst> = subs_by_id
-            .values()
-            .filter(|s| s.apc_col >= 0)
-            .copied()
+        let substitutions: Vec<Subst> = cell_by_id
+            .iter()
+            .filter_map(|(id, cell)| {
+                apc_poly_id_to_index.get(id).map(|&apc_col| Subst {
+                    cell: *cell,
+                    apc_col: apc_col as u32,
+                })
+            })
             .collect();
 
         // Send the airs and substitutions to device. `airs` is shared with the derived-expression
@@ -406,7 +403,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
             &self.apc.machine.derived_columns,
             &apc_poly_id_to_index,
-            &subs_by_id,
+            &cell_by_id,
             height,
         );
         // In practice `d_specs` is never empty, because we will always have `is_valid`
