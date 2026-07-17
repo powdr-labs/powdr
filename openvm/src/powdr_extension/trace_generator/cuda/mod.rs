@@ -50,7 +50,7 @@ pub use periphery::{
 fn emit_expr(
     bc: &mut Vec<u32>,
     expr: &AlgebraicExpression<BabyBear>,
-    emit_ref: &dyn Fn(&mut Vec<u32>, u64),
+    emit_ref: &impl Fn(&mut Vec<u32>, u64),
 ) {
     match expr {
         AlgebraicExpression::Number(c) => {
@@ -80,7 +80,7 @@ fn emit_expr(
 fn emit_expr_span(
     bc: &mut Vec<u32>,
     expr: &AlgebraicExpression<BabyBear>,
-    emit_ref: &dyn Fn(&mut Vec<u32>, u64),
+    emit_ref: &impl Fn(&mut Vec<u32>, u64),
 ) -> ExprSpan {
     // The span starts where the bytecode currently ends
     let off = bc.len() as u32;
@@ -103,7 +103,7 @@ fn emit_method(
     bytecode: &mut Vec<u32>,
     off: usize,
     method: &ComputationMethod<BabyBear, AlgebraicExpression<BabyBear>>,
-    emit_ref: &dyn Fn(&mut Vec<u32>, u64),
+    emit_ref: &impl Fn(&mut Vec<u32>, u64),
 ) {
     match method {
         ComputationMethod::Constant(c) => {
