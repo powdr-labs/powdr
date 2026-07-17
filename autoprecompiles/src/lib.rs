@@ -269,13 +269,6 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
             .unique_references()
             .map(|r| r.id)
             .collect::<BTreeSet<_>>();
-        // Poly_ids referenced by derived-column computation methods. These may point at columns that
-        // were substituted out of the constraints/bus interactions (hence absent from
-        // `all_references`) but whose values witgen still needs to compute the derived column — e.g.
-        // Leanr's re-encoding pass references the original group columns. We keep their substitutions
-        // so witgen can recover the removed columns' values from the original instruction trace.
-        // In the native optimizer path derived methods only reference surviving columns, so this set
-        // is a subset of `all_references` and the retained `subs` are unchanged.
         let derived_referenced = machine
             .derived_columns
             .iter()
@@ -492,14 +485,23 @@ fn add_guards_constraint<T: FieldElement>(
 
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = add_guards_constraint(*left, is_valid);
-            let right = match op {
-                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => {
-                    Box::new(add_guards_constraint(*right, is_valid))
+            let (left, right) = match op {
+                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => (
+                    // Both sides need to be guarded.
+                    add_guards_constraint(*left, is_valid),
+                    add_guards_constraint(*right, is_valid),
+                ),
+                AlgebraicBinaryOperator::Mul => {
+                    // Only one side needs to be guarded. It does not matter which, but it cannot be
+                    // a constant, because that would increase the degree.
+                    if matches!(*left, AlgebraicExpression::Number(_)) {
+                        (*left, add_guards_constraint(*right, is_valid))
+                    } else {
+                        (add_guards_constraint(*left, is_valid), *right)
+                    }
                 }
-                AlgebraicBinaryOperator::Mul => right,
             };
-            AlgebraicExpression::new_binary(left, op, *right)
+            AlgebraicExpression::new_binary(left, op, right)
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
             let inner = add_guards_constraint(*expr, is_valid);
