@@ -16,6 +16,7 @@ use powdr_autoprecompiles::bus_map::BusMap;
 use powdr_autoprecompiles::export::{ApcWithBusMap, SimpleInstruction};
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
 use powdr_autoprecompiles::{Apc, ColumnAllocator};
+use powdr_autoprecompiles_lean_ffi::KnownVm;
 use powdr_number::BabyBearField;
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 
@@ -42,8 +43,11 @@ fn roundtrip(fixture: &str) {
     let input = serde_json::json!({ "machine": &machine, "bus_map": &bus_map, "next_free_id": next_free_id });
     let input_str = serde_json::to_string(&input).unwrap();
 
-    let output_str = powdr_autoprecompiles_lean_ffi::optimize_json(&input_str)
-        .unwrap_or_else(|e| panic!("Lean FFI failed for {fixture}: {e}"));
+    // These are OpenVM (BabyBear) fixtures; optimize over OpenVM with its default degree bound
+    // (`{identities: 3, bus_interactions: 2}`, matching apc-optimizer's `OpenVM.defaultDegreeBound`).
+    let output_str =
+        powdr_autoprecompiles_lean_ffi::optimize_json(KnownVm::OpenVm, 3, 2, &input_str)
+            .unwrap_or_else(|e| panic!("Lean FFI failed for {fixture}: {e}"));
 
     // The Lean FFI returns `{machine, next_free_id}` (see apc-optimizer#130); the core assertion is
     // that the wrapped machine deserializes into a SymbolicMachine.
