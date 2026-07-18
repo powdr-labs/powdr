@@ -53,8 +53,7 @@ where
 {
     #[cfg(feature = "lean-optimizer")]
     if lean::enabled() {
-        // The Lean optimizer dispatches on the target VM, derived 1:1 from the field: OpenVM uses
-        // BabyBear, SP1 uses KoalaBear. It assumes each VM's default bus semantics.
+        // TODO: This is a hack, we should pass the known VM into optimize()!
         let vm = match T::known_field() {
             Some(KnownField::BabyBearField) => lean::KnownVm::OpenVm,
             Some(KnownField::KoalaBearField) => lean::KnownVm::Sp1,
