@@ -2,7 +2,9 @@
  * C shim bridging Rust to the apc-optimizer's `@[export] apc_optimizer_optimize_json`.
  *
  * Exposes a plain C ABI:
- *   char *apc_optimizer_optimize(const char *input);   // JSON in -> optimized JSON out (malloc'd)
+ *   char *apc_optimizer_optimize(uint8_t vm, uint64_t degree_identities,
+ *                                uint64_t degree_bus_interactions, const char *input);
+ *       // (VM + degree bound, JSON in) -> optimized JSON out (malloc'd)
  *   void  apc_optimizer_free(char *p);                  // free the returned buffer
  *
  * The Lean runtime is initialized exactly once (pthread_once). `apc_optimizer_optimize_json` is a
@@ -23,7 +25,9 @@
  * `builtin` flag (no IO world) in this toolchain, matching the generated `Main.c`. If the apc-optimizer
  * lib/module is renamed, these two symbols change accordingly.
  */
-extern lean_object *apc_optimizer_optimize_json(lean_object *input);
+extern lean_object *apc_optimizer_optimize_json(
+    uint8_t vm, uint64_t degree_identities, uint64_t degree_bus_interactions,
+    lean_object *input);
 extern lean_object *initialize_apc_x2doptimizer_ApcOptimizer_Ffi(uint8_t builtin);
 
 /* Provided by libleanrt. */
@@ -57,7 +61,8 @@ static void apc_optimizer_do_init(void) {
     pthread_key_create(&g_thread_key, finalize_foreign_thread);
 }
 
-char *apc_optimizer_optimize(const char *input) {
+char *apc_optimizer_optimize(uint8_t vm, uint64_t degree_identities,
+                             uint64_t degree_bus_interactions, const char *input) {
     pthread_once(&g_init_once, apc_optimizer_do_init);
 
     /* Register each foreign thread with the runtime once; the pthread-key destructor finalizes it
@@ -68,7 +73,9 @@ char *apc_optimizer_optimize(const char *input) {
     }
 
     lean_object *in = lean_mk_string(input);        /* owned */
-    lean_object *out = apc_optimizer_optimize_json(in);  /* consumes `in`, returns owned String */
+    /* consumes `in`, returns owned String */
+    lean_object *out = apc_optimizer_optimize_json(vm, degree_identities,
+                                                   degree_bus_interactions, in);
     const char *s = lean_string_cstr(out);
     char *result = strdup(s);
     lean_dec_ref(out);

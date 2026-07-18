@@ -2,9 +2,10 @@
 //! FFI, selected at runtime by `POWDR_USE_LEAN_OPTIMIZER`. Compiled only with the `lean-optimizer`
 //! feature.
 
+pub(super) use powdr_autoprecompiles_lean_ffi::KnownVm;
 use powdr_number::FieldElement;
 
-use crate::{BusMap, SymbolicMachine};
+use crate::{BusMap, DegreeBound, SymbolicMachine};
 
 /// Returns whether the apc-optimizer should be used instead of the native Rust optimizer,
 /// controlled by the `POWDR_USE_LEAN_OPTIMIZER` environment variable (`1`/`true`).
@@ -35,6 +36,8 @@ pub(super) fn optimize<T, BusTypes>(
     machine: &SymbolicMachine<T>,
     bus_map: &BusMap<BusTypes>,
     next_free_id: u64,
+    vm: KnownVm,
+    degree_bound: DegreeBound,
 ) -> (SymbolicMachine<T>, u64)
 where
     T: FieldElement,
@@ -43,8 +46,13 @@ where
     let input =
         serde_json::json!({ "machine": machine, "bus_map": bus_map, "next_free_id": next_free_id });
     let input_str = serde_json::to_string(&input).expect("serializing machine for Lean FFI");
-    let output_str = powdr_autoprecompiles_lean_ffi::optimize_json(&input_str)
-        .unwrap_or_else(|e| panic!("apc-optimizer FFI failed: {e}"));
+    let output_str = powdr_autoprecompiles_lean_ffi::optimize_json(
+        vm,
+        degree_bound.identities as u64,
+        degree_bound.bus_interactions as u64,
+        &input_str,
+    )
+    .unwrap_or_else(|e| panic!("apc-optimizer FFI failed: {e}"));
     let result: OptimizerResult<T> = serde_json::from_str(&output_str)
         .unwrap_or_else(|e| panic!("deserializing apc-optimizer output failed: {e}"));
     (result.machine, result.next_free_id)
