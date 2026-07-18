@@ -45,8 +45,9 @@ fn roundtrip(fixture: &str) {
 
     // These are OpenVM (BabyBear) fixtures; optimize over OpenVM with its default degree bound
     // (`{identities: 3, bus_interactions: 2}`, matching apc-optimizer's `OpenVM.defaultDegreeBound`).
-    let output_str = powdr_autoprecompiles_lean_ffi::optimize_json(KnownVm::OpenVm, 3, 2, &input_str)
-        .unwrap_or_else(|e| panic!("Lean FFI failed for {fixture}: {e}"));
+    let output_str =
+        powdr_autoprecompiles_lean_ffi::optimize_json(KnownVm::OpenVm, 3, 2, &input_str)
+            .unwrap_or_else(|e| panic!("Lean FFI failed for {fixture}: {e}"));
 
     // The Lean FFI returns `{machine, next_free_id}` (see apc-optimizer#130); the core assertion is
     // that the wrapped machine deserializes into a SymbolicMachine.
