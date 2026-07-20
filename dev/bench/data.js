@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784572450036,
+  "lastUpdate": 1784590869745,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416839,6 +416839,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 40500140583,
             "range": "± 730598229",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f1fd97ed03fde48c3ca515e4ef93d0a087a7f13a",
+          "message": "bench: measure APC generation time and report it in the readme (#3796)\n\n## What\n\nAdds APC-generation-time measurement to the guest benchmark tooling and\nsurfaces it in the generated bench-results readme. Extracted from the\n`leanr-nightly-run-results` branch, without any of the Lean-specific\nchanges.\n\n## Changes\n\n- **`run_guest_benches.sh`**: `run_bench` times the `generate-apcs`\nstage and writes `apc_generation_time_s.txt` (integer seconds) into the\nrun dir. Because `generate-apcs` shares the generate-stage cache (same\nguest, profile-input, artifacts/candidates dirs) with the `prove` that\nfollows, this **warms the cache rather than duplicating work**. Two\ncorrectness details:\n- **Timed once per (guest, profile-input).** Under cell PGO the generate\nstage is independent of the APC count, so sweeping the same guest across\ncounts (e.g. `matmul apc003` then `apc030`) makes later calls\ngenerate-stage cache hits. Timing those would record a misleading ~0s\n(visible in older data as `matmul apc030 = 1s`). A marker in the\nunpublished `.bench-cache` dir ensures we record only the first real\ngeneration, attributed to that run dir.\n- **Excludes compile time.** The binary is built *untimed* before the\ntimed `generate-apcs` run, so `cargo` compilation never leaks into the\nmeasurement.\n- **`generate_bench_results_readme.py`**: reads those files and renders\nan **\"APC generation time per benchmark\"** table with a total row. When\nno timing files are present, the section is omitted.\n\n## Example output\n\n| Benchmark | Run | APC generation time |\n| --- | --- | --- |\n| ecc | affine-hint-apc030 | 8m31s |\n| keccak | apc030 | 1m27s |\n| matmul | apc003 | 4m03s |\n| sha256 | apc030 | 86m18s |\n| … | | |\n| **total** | | **…** |\n\n## Testing\n\n- `bash -n run_guest_benches.sh` passes; the once-per-cache guard\nverified with a simulation (records `apc003` only, skips `apc000` and\nthe `apc030` cache hit).\n- `generate_bench_results_readme.py` reproduces the table published for\na real run.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T14:08:26Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/f1fd97ed03fde48c3ca515e4ef93d0a087a7f13a"
+        },
+        "date": 1784590860378,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 17145213881,
+            "range": "± 1360320717",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 40458161603,
+            "range": "± 203423221",
             "unit": "ns/iter"
           }
         ]
