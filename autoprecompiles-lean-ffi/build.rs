@@ -18,9 +18,17 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Upstream apc-optimizer repository and the exact commit this crate builds against. To move to a newer
-/// optimizer, bump `APC_OPTIMIZER_REV` here (and refresh the `lean-optimizer` snapshots as needed).
+/// optimizer, bump `APC_OPTIMIZER_REV` here (and refresh the `lean-optimizer` snapshots as needed), or
+/// override it at build time with the `APC_OPTIMIZER_REV` env var (CI pins this to the latest
+/// apc-optimizer `main`).
 const APC_OPTIMIZER_REPO: &str = "https://github.com/powdr-labs/apc-optimizer.git";
 const APC_OPTIMIZER_REV: &str = "abeb5c5d6e5f7d294fb7fae231f870f1ad405662";
+
+/// The apc-optimizer commit to build against: the `APC_OPTIMIZER_REV` env var if set, else the
+/// vendored [`APC_OPTIMIZER_REV`] default above.
+fn apc_optimizer_rev() -> String {
+    std::env::var("APC_OPTIMIZER_REV").unwrap_or_else(|_| APC_OPTIMIZER_REV.to_string())
+}
 /// The Lean executable target (`[[lean_exe]]` in apc-optimizer's `lakefile.toml`); its `.rsp` file carries
 /// the object list + runtime link flags we replay. If apc-optimizer renames the exe, bump this.
 const APC_OPTIMIZER_EXE: &str = "apc-optimizer";
@@ -96,15 +104,16 @@ fn resolve_apc_optimizer_dir(out_dir: &Path) -> PathBuf {
     }
 
     // Pin to the exact commit. Fetch only when the cache doesn't already contain it.
-    if run(&mut git(&["rev-parse", "HEAD"])) != APC_OPTIMIZER_REV {
-        let have_rev = git(&["cat-file", "-e", &format!("{APC_OPTIMIZER_REV}^{{commit}}")])
+    let rev = apc_optimizer_rev();
+    if run(&mut git(&["rev-parse", "HEAD"])) != rev {
+        let have_rev = git(&["cat-file", "-e", &format!("{rev}^{{commit}}")])
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false);
         if !have_rev {
             run(&mut git(&["fetch", "origin"]));
         }
-        run(&mut git(&["checkout", "--detach", APC_OPTIMIZER_REV]));
+        run(&mut git(&["checkout", "--detach", &rev]));
     }
 
     checkout
@@ -130,6 +139,7 @@ fn main() {
 
     println!("cargo:rerun-if-env-changed=APC_OPTIMIZER_DIR");
     println!("cargo:rerun-if-env-changed=APC_OPTIMIZER_CACHE_DIR");
+    println!("cargo:rerun-if-env-changed=APC_OPTIMIZER_REV");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=c/ffi_shim.c");
 
