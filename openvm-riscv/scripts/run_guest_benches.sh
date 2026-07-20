@@ -41,13 +41,26 @@ run_bench() {
     # `apc_generation_time_s.txt`. `generate-apcs` shares the generate-stage
     # cache with the `prove` below (same guest, profile-input, pgo=cell default,
     # artifacts/candidates dirs), so this warms the cache rather than duplicating
-    # work. Only meaningful when apcs > 0.
-    if [ "${apcs:-0}" -ne 0 ]; then
+    # work.
+    #
+    # We time this at most once per (guest, profile-input): under cell PGO the
+    # generate stage is independent of the APC count, so sweeping the same guest
+    # across multiple counts (e.g. matmul apc003 then apc030) hits the cache from
+    # the second call onward — timing those hits would record a misleading ~0s.
+    # The recorded time is stored in the (unpublished) cache dir as a marker and
+    # copied into the run dir of the first `apcs > 0` run that computed it.
+    gen_time_file="${cache_root}/apc_generation_time_s.txt"
+    if [ "${apcs:-0}" -ne 0 ] && [ ! -f "${gen_time_file}" ]; then
+        # Build first, *untimed*, so binary compilation never counts toward the
+        # measured generation time (the following `cargo run` is then a no-op
+        # freshness check plus the actual generation work).
+        cargo build --bin powdr_openvm_riscv -r --features metrics
         gen_start=$SECONDS
         cargo run --bin powdr_openvm_riscv -r --features metrics -- \
             --artifacts-dir "${artifacts_dir}" generate-apcs "$guest" \
             --profile-input "$input" --apc-candidates-dir "${candidates_dir}"
-        echo "$((SECONDS - gen_start))" > "${run_name}/apc_generation_time_s.txt"
+        echo "$((SECONDS - gen_start))" > "${gen_time_file}"
+        cp "${gen_time_file}" "${run_name}/apc_generation_time_s.txt"
     fi
 
     psrecord --include-children --interval 1 \
