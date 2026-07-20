@@ -12,6 +12,12 @@ set -e
 SCRIPT_PATH=$(realpath "${BASH_SOURCE[0]}")
 SCRIPTS_DIR=$(dirname "$SCRIPT_PATH")
 
+# When set to 1, time the `generate-apcs` stage separately and record it under
+# each run dir as `apc_generation_time_s.txt`. This warms the shared
+# `--artifacts-dir` cache, so the subsequent `prove` reuses the generate blob
+# (no extra work). Off by default, so nightly is byte-for-byte unchanged.
+TIME_APCS="${POWDR_BENCH_TIME_APCS:-0}"
+
 run_bench() {
     guest="$1"
     input="$2"
@@ -36,6 +42,18 @@ run_bench() {
     mkdir -p "${candidates_dir}"
 
     mkdir -p "${run_name}"
+
+    # Optionally time the APC generation stage on its own. `generate-apcs` shares
+    # the generate-stage cache with the `prove` below (same guest, profile-input,
+    # pgo=cell default, artifacts/candidates dirs), so this warms the cache rather
+    # than duplicating work. Only meaningful when apcs > 0.
+    if [ "${TIME_APCS}" = "1" ] && [ "${apcs:-0}" -ne 0 ]; then
+        gen_start=$SECONDS
+        cargo run --bin powdr_openvm_riscv -r --features metrics -- \
+            --artifacts-dir "${artifacts_dir}" generate-apcs "$guest" \
+            --profile-input "$input" --apc-candidates-dir "${candidates_dir}"
+        echo "$((SECONDS - gen_start))" > "${run_name}/apc_generation_time_s.txt"
+    fi
 
     psrecord --include-children --interval 1 \
         --log "${run_name}"/psrecord.csv \
