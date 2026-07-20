@@ -17,6 +17,18 @@ enum OpCode : uint32_t {
   OP_MUL = 4, // Multiply the top two values on the stack.
   OP_NEG = 5, // Negate the top value on the stack.
   OP_INV_OR_ZERO = 6, // Invert the top value on the stack if it is not zero, otherwise pop and push zero.
+  OP_JMP_IF_NONZERO = 7, // Pop the top value; if it is nonzero, jump `ip` to the following target (an index into this expression). Used to lower `IfEqZero`.
+  OP_JMP = 8, // Unconditionally jump `ip` to the following target (an index into this expression).
+  OP_PUSH_DUMMY = 9, // Push a value read straight from an original (dummy) AIR trace. Followed by three operands: air index, source column, and base row within the row-block. Used by derived columns to read inputs (both surviving and optimizer-removed columns) without staging them in the APC buffer.
+};
+
+// Column-major metadata for one original (dummy) AIR trace. Shared by the tracegen
+// kernel and the derived-expression evaluator; `buffer` is column-major (col*height + row).
+struct OriginalAir {
+  int width;         // number of columns
+  int height;        // number of rows (Ha)
+  const Fp* buffer;  // column-major base: col*height + row
+  int row_block_size; // stride between used rows (rows per APC call)
 };
 
 static constexpr int STACK_CAPACITY = 16;
@@ -33,8 +45,11 @@ __device__ __forceinline__ Fp stack_pop(Fp* stack, int& sp) {
 }
 
 // Evaluate expression encoded as u32 bytecode starting at `expr` for length `len` on a given APC row `r` of `apc_trace`.
+// `airs` is only required when the bytecode contains `OP_PUSH_DUMMY` (derived-column evaluation); the bus
+// evaluator never emits it and passes `nullptr`.
 __device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
-                                        const Fp* __restrict__ apc_trace, size_t r) {
+                                        const Fp* __restrict__ apc_trace, size_t r,
+                                        const OriginalAir* __restrict__ airs = nullptr) {
   Fp stack[STACK_CAPACITY];
   int sp = 0;
   for (uint32_t ip = 0; ip < len;) {
@@ -79,6 +94,28 @@ __device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
         stack_push(stack, sp, out);
         break;
       }
+      case OP_JMP_IF_NONZERO: {
+        const uint32_t target = expr[ip++];
+        const Fp c = stack_pop(stack, sp);
+        if (!(c == Fp::zero())) {
+          ip = target;
+        }
+        break;
+      }
+      case OP_JMP: {
+        ip = expr[ip];
+        break;
+      }
+      case OP_PUSH_DUMMY: {
+        const uint32_t air_index = expr[ip++];
+        const uint32_t col = expr[ip++];
+        const uint32_t row = expr[ip++];
+        const OriginalAir air = airs[air_index];
+        // Column-major dummy trace, `row_block_size` rows per APC call `r`.
+        const size_t src = (size_t)col * (size_t)air.height + (size_t)row + r * (size_t)air.row_block_size;
+        stack_push(stack, sp, air.buffer[src]);
+        break;
+      }
       default: {
         assert(false && "Unknown opcode");
       }
@@ -99,8 +136,9 @@ __device__ __forceinline__ Fp eval_arg(
   const ExprSpan& span,
   const uint32_t* __restrict__ d_bytecode,
   const Fp* __restrict__ apc_trace,
-  size_t r
+  size_t r,
+  const OriginalAir* __restrict__ airs = nullptr
 ) {
-  return eval_expr(d_bytecode + span.off, span.len, apc_trace, r);
+  return eval_expr(d_bytecode + span.off, span.len, apc_trace, r, airs);
 }
 
