@@ -1,0 +1,28 @@
+Total cells: 1.30B
+Cells by AIR:
+air_name
+KeccakfPermAir                                                       1035730944
+VmAirWrapper<Rv32BaseAluAdapterAir, BaseAluCoreAir<4, 8>              113246208
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadStoreCoreAir<4>              85983232
+XorinVmAir                                                             11231232
+VmAirWrapper<Rv32BranchAdapterAir, BranchEqualCoreAir<4>               10223616
+VmAirWrapper<Rv32BaseAluAdapterAir, LessThanCoreAir<4, 8>               9699328
+VmAirWrapper<Rv32BranchAdapterAir, BranchLessThanCoreAir<4, 8>          8388608
+KeccakfOpAir                                                            6893568
+VmAirWrapper<Rv32JalrAdapterAir, Rv32JalrCoreAir>                       5505024
+VmAirWrapper<Rv32LoadStoreAdapterAir, LoadSignExtendCoreAir<4, 8>       3538944
+RangeTupleCheckerAir<2>                                                 3145728
+BitwiseOperationLookupAir<8>                                            2359296
+VariableRangeCheckerAir                                                 2097152
+VmAirWrapper<Rv32RdWriteAdapterAir, Rv32AuipcCoreAir>                   1966080
+VmAirWrapper<Rv32CondRdWriteAdapterAir, Rv32JalLuiCoreAir>              1769472
+VmAirWrapper<Rv32MultAdapterAir, MultiplicationCoreAir<4, 8>             380928
+Poseidon2PeripheryAir<BabyBearParameters>, 1>                            230400
+ProgramAir                                                                81920
+MemoryMerkleAir<8>                                                        32768
+PersistentBoundaryAir<8>                                                   8064
+Rv32HintStoreAir                                                             64
+VmConnectorAir                                                               24
+PhantomAir                                                                    6
+Name: cells, dtype: int64
+Saving plot to manual/trace_cells.png

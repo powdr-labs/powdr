@@ -1,0 +1,4 @@
+powdr: fd8fa1beaedf53194dd2641c3ffc9d55f6cae54b
+openvm-eth: b4204ea4e28298744088492b24062bf247cec122
+apc-optimizer: 3f3fa8d32abcee7848406aafcf3f89576189e5b6
+lean-optimizer: enabled (POWDR_USE_LEAN_OPTIMIZER=1)
