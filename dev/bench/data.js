@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784548791318,
+  "lastUpdate": 1784560025877,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416771,6 +416771,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 41959270192,
             "range": "± 232857236",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "id": "5052e724efd8139866cf22ceaf2ceef32050e493",
+          "message": "nightly: run all benchmarks through the Lean optimizer\n\nThe Lean apc-optimizer wiring (FFI crate, `lean-optimizer` feature,\nruntime `POWDR_USE_LEAN_OPTIMIZER` gate) already lives on main. This\nturns it on for the whole nightly (guest, CPU reth, Modal GPU, and the\nself-hosted GPU reth) and lets CI track the optimizer's latest `main`:\n\n- `run_guest_benches.sh`: build the `powdr_openvm_riscv` binary with\n  `POWDR_BENCH_CARGO_FEATURES` (default `metrics`), threaded through the\n  build/timing/prove commands so CI adds `lean-optimizer`.\n- `build.rs`: the apc-optimizer commit can be overridden at build time\n  via the `APC_OPTIMIZER_REV` env var (falls back to the vendored\n  default).\n- `nightly-tests.yml`:\n  - New `resolve_apc_optimizer_rev` job resolves apc-optimizer's latest\n    `main` once and shares it (`APC_OPTIMIZER_REV`) with every Lean\n    build, so all jobs and run.txt agree on one revision.\n  - `test_apc_guest`, `test_apc_reth`, `test_apc_gpu`: enable Lean (env +\n    feature / openvm-eth FEATURES patch) and install the Lean toolchain\n    (elan).\n  - The Modal GPU prove in `test_apc_reth` replays the CPU-compiled\n    apc-cache, whose generate blobs are keyed independently of the\n    optimizer (`stage_hash(generate, pgo, guest_hash)`), so it proves the\n    Lean APCs with no Modal changes.\n  - run.txt records `apc-optimizer: <sha>` for both the CPU nightly and\n    the `-gpu` nightly.\n\nThe self-hosted `gpu-shared` runner now builds the Lean FFI itself\n(elan + apc-optimizer/mathlib); its persistent apc-optimizer cache makes\nthat a one-time cost.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T12:07:09Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/5052e724efd8139866cf22ceaf2ceef32050e493"
+        },
+        "date": 1784560014903,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 19339351758,
+            "range": "± 956362499",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 39662341167,
+            "range": "± 426332589",
             "unit": "ns/iter"
           }
         ]
