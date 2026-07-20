@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784515288531,
+  "lastUpdate": 1784548791318,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416737,6 +416737,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 41363505987,
             "range": "± 286181279",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "id": "21c576e927bce09fd67c8df5f37f07229ccd0e6d",
+          "message": "Time APC generation once per guest, excluding compile time\n\nTwo fixes to the generation-time measurement:\n\n- Record it at most once per (guest, profile-input). Under cell PGO the\n  generate stage is independent of the APC count, so sweeping the same\n  guest across counts (e.g. matmul apc003 then apc030) makes later calls\n  generate-stage cache hits that were recording a misleading ~0s. Guard\n  on a marker in the (unpublished) cache dir; write the real time into\n  the run dir of the first apcs>0 call that computed it.\n- Build the binary untimed before timing the generate-apcs run, so\n  compilation never leaks into the measured time.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T11:34:34Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/21c576e927bce09fd67c8df5f37f07229ccd0e6d"
+        },
+        "date": 1784548780044,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 21742741916,
+            "range": "± 1169412265",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 41959270192,
+            "range": "± 232857236",
             "unit": "ns/iter"
           }
         ]
