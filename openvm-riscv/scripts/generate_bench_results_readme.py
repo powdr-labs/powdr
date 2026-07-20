@@ -49,8 +49,8 @@ def apc_generation_time_lines(results_dir: Path) -> list[str]:
     """Table of recorded APC generation times, or [] if none were recorded.
 
     The bench scripts write `apc_generation_time_s.txt` (integer seconds) into
-    each APC run dir when `POWDR_BENCH_TIME_APCS=1`. Absent that env var (e.g. a
-    normal nightly), no files exist and this section is omitted.
+    each APC run dir. When a run has no such files (e.g. only apcs=0 runs, or
+    older results), this section is omitted.
     """
     rows: list[tuple[str, str, int]] = []
     for experiment_dir in sorted(p for p in results_dir.iterdir() if p.is_dir()):
