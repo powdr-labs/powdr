@@ -464,10 +464,6 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         )
         .unwrap();
 
-        // `output` is exactly the committed trace: surviving columns filled by `apc_tracegen`,
-        // derived columns filled by `apc_apply_derived_expr`. Removed columns are never staged here
-        // (the derived evaluator reads them from the dummy traces), so no trailing scratch to drop
-        // and no extra copy.
         Some(output)
     }
 }
