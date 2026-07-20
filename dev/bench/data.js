@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784560025877,
+  "lastUpdate": 1784572450036,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416805,6 +416805,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 39662341167,
             "range": "± 426332589",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "id": "172fc9e17979eaa7ecd1582092b2189e05765006",
+          "message": "nightly: set RUST_MIN_STACK for the Lean optimizer\n\nThe Lean apc-optimizer recurses deeply and overflows the default worker\nthread stack (seen as a stack overflow in the GPU reth job). Set\nRUST_MIN_STACK=512MiB at the workflow level so every Lean job (guest,\nreth, GPU) gets it — matching the value the local Lean runner used.\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-20T17:50:02Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/172fc9e17979eaa7ecd1582092b2189e05765006"
+        },
+        "date": 1784572440174,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 18609604254,
+            "range": "± 1192387310",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 40500140583,
+            "range": "± 730598229",
             "unit": "ns/iter"
           }
         ]
