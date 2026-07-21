@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784590869745,
+  "lastUpdate": 1784677173272,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416873,6 +416873,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 40458161603,
             "range": "± 203423221",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "b1b61aabfbb7b9c1e56d5624b3da9da6792e839e",
+          "message": "Hints for removed free variables (#3775)\n\nAdds hints for variables removed in the `remove_free_variables` pass,\nbuilding on top of #3761.",
+          "timestamp": "2026-07-21T11:47:51Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/b1b61aabfbb7b9c1e56d5624b3da9da6792e839e"
+        },
+        "date": 1784677163080,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 18020758004,
+            "range": "± 807516655",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 41795108497,
+            "range": "± 357328292",
             "unit": "ns/iter"
           }
         ]
