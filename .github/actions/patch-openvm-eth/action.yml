@@ -12,7 +12,22 @@ runs:
         ref: b4204ea4e28298744088492b24062bf247cec122
         path: openvm-eth
 
-    - name: Patch openvm-eth to use local powdr
+    # powdr's drop-hint branch pulls openvm from the fork's drop-hints branch,
+    # while openvm-eth redirects upstream openvm-org/openvm to the fork's
+    # v2.0.0-beta.2-powdr.1 tag via its manifest [patch] table. Cargo refuses a
+    # graph with two revisions of the same source (links conflict), so check
+    # the fork branch out and unify every route onto it with config-level path
+    # patches: config patches take precedence over manifest patches for the
+    # openvm-org source, and the powdr-labs table folds powdr's direct
+    # branch references onto the same copy.
+    - name: Checkout openvm fork (drop-hints)
+      uses: actions/checkout@v4
+      with:
+        repository: powdr-labs/openvm
+        ref: drop-hints
+        path: openvm-fork
+
+    - name: Patch openvm-eth to use local powdr and the openvm fork
       shell: bash
       run: |
         cd openvm-eth
@@ -25,4 +40,120 @@ runs:
         powdr-number = { path = "../number" }
         powdr-autoprecompiles = { path = "../autoprecompiles" }
         powdr-openvm-riscv-hints-circuit = { path = "../openvm-riscv/extensions/hints-circuit" }
+
+        [patch."https://github.com/openvm-org/openvm.git"]
+        k256 = { path = "../openvm-fork/guest-libs/k256" }
+        openvm = { path = "../openvm-fork/crates/toolchain/openvm" }
+        openvm-algebra-circuit = { path = "../openvm-fork/extensions/algebra/circuit" }
+        openvm-algebra-complex-macros = { path = "../openvm-fork/extensions/algebra/complex-macros" }
+        openvm-algebra-guest = { path = "../openvm-fork/extensions/algebra/guest" }
+        openvm-algebra-moduli-macros = { path = "../openvm-fork/extensions/algebra/moduli-macros" }
+        openvm-algebra-transpiler = { path = "../openvm-fork/extensions/algebra/transpiler" }
+        openvm-benchmarks-prove = { path = "../openvm-fork/benchmarks/prove" }
+        openvm-bigint-circuit = { path = "../openvm-fork/extensions/bigint/circuit" }
+        openvm-bigint-guest = { path = "../openvm-fork/extensions/bigint/guest" }
+        openvm-bigint-transpiler = { path = "../openvm-fork/extensions/bigint/transpiler" }
+        openvm-build = { path = "../openvm-fork/crates/toolchain/build" }
+        openvm-circuit = { path = "../openvm-fork/crates/vm" }
+        openvm-circuit-derive = { path = "../openvm-fork/crates/vm/derive" }
+        openvm-circuit-primitives = { path = "../openvm-fork/crates/circuits/primitives" }
+        openvm-circuit-primitives-derive = { path = "../openvm-fork/crates/circuits/primitives/derive" }
+        openvm-continuations = { path = "../openvm-fork/crates/continuations" }
+        openvm-custom-insn = { path = "../openvm-fork/crates/toolchain/custom_insn" }
+        openvm-deferral-circuit = { path = "../openvm-fork/extensions/deferral/circuit" }
+        openvm-deferral-guest = { path = "../openvm-fork/extensions/deferral/guest" }
+        openvm-deferral-transpiler = { path = "../openvm-fork/extensions/deferral/transpiler" }
+        openvm-ecc-circuit = { path = "../openvm-fork/extensions/ecc/circuit" }
+        openvm-ecc-guest = { path = "../openvm-fork/extensions/ecc/guest" }
+        openvm-ecc-sw-macros = { path = "../openvm-fork/extensions/ecc/sw-macros" }
+        openvm-ecc-transpiler = { path = "../openvm-fork/extensions/ecc/transpiler" }
+        openvm-instructions = { path = "../openvm-fork/crates/toolchain/instructions" }
+        openvm-instructions-derive = { path = "../openvm-fork/crates/toolchain/instructions/derive" }
+        openvm-keccak256 = { path = "../openvm-fork/guest-libs/keccak256" }
+        openvm-keccak256-circuit = { path = "../openvm-fork/extensions/keccak256/circuit" }
+        openvm-keccak256-guest = { path = "../openvm-fork/extensions/keccak256/guest" }
+        openvm-keccak256-transpiler = { path = "../openvm-fork/extensions/keccak256/transpiler" }
+        openvm-macros-common = { path = "../openvm-fork/crates/toolchain/macros" }
+        openvm-mod-circuit-builder = { path = "../openvm-fork/crates/circuits/mod-builder" }
+        openvm-pairing = { path = "../openvm-fork/guest-libs/pairing" }
+        openvm-pairing-circuit = { path = "../openvm-fork/extensions/pairing/circuit" }
+        openvm-pairing-guest = { path = "../openvm-fork/extensions/pairing/guest" }
+        openvm-pairing-transpiler = { path = "../openvm-fork/extensions/pairing/transpiler" }
+        openvm-platform = { path = "../openvm-fork/crates/toolchain/platform" }
+        openvm-poseidon2-air = { path = "../openvm-fork/crates/circuits/poseidon2-air" }
+        openvm-recursion-circuit = { path = "../openvm-fork/crates/recursion" }
+        openvm-recursion-circuit-derive = { path = "../openvm-fork/crates/recursion/derive" }
+        openvm-rv32-adapters = { path = "../openvm-fork/extensions/rv32-adapters" }
+        openvm-rv32im-circuit = { path = "../openvm-fork/extensions/rv32im/circuit" }
+        openvm-rv32im-guest = { path = "../openvm-fork/extensions/rv32im/guest" }
+        openvm-rv32im-transpiler = { path = "../openvm-fork/extensions/rv32im/transpiler" }
+        openvm-sdk = { path = "../openvm-fork/crates/sdk" }
+        openvm-sdk-config = { path = "../openvm-fork/crates/sdk-config" }
+        openvm-sha2 = { path = "../openvm-fork/guest-libs/sha2" }
+        openvm-sha2-air = { path = "../openvm-fork/crates/circuits/sha2-air" }
+        openvm-sha2-circuit = { path = "../openvm-fork/extensions/sha2/circuit" }
+        openvm-sha2-guest = { path = "../openvm-fork/extensions/sha2/guest" }
+        openvm-sha2-transpiler = { path = "../openvm-fork/extensions/sha2/transpiler" }
+        openvm-static-verifier = { path = "../openvm-fork/crates/static-verifier" }
+        openvm-transpiler = { path = "../openvm-fork/crates/toolchain/transpiler" }
+        openvm-verify-stark-host = { path = "../openvm-fork/crates/verify" }
+        p256 = { path = "../openvm-fork/guest-libs/p256" }
+
+        [patch."https://github.com/powdr-labs/openvm.git"]
+        k256 = { path = "../openvm-fork/guest-libs/k256" }
+        openvm = { path = "../openvm-fork/crates/toolchain/openvm" }
+        openvm-algebra-circuit = { path = "../openvm-fork/extensions/algebra/circuit" }
+        openvm-algebra-complex-macros = { path = "../openvm-fork/extensions/algebra/complex-macros" }
+        openvm-algebra-guest = { path = "../openvm-fork/extensions/algebra/guest" }
+        openvm-algebra-moduli-macros = { path = "../openvm-fork/extensions/algebra/moduli-macros" }
+        openvm-algebra-transpiler = { path = "../openvm-fork/extensions/algebra/transpiler" }
+        openvm-benchmarks-prove = { path = "../openvm-fork/benchmarks/prove" }
+        openvm-bigint-circuit = { path = "../openvm-fork/extensions/bigint/circuit" }
+        openvm-bigint-guest = { path = "../openvm-fork/extensions/bigint/guest" }
+        openvm-bigint-transpiler = { path = "../openvm-fork/extensions/bigint/transpiler" }
+        openvm-build = { path = "../openvm-fork/crates/toolchain/build" }
+        openvm-circuit = { path = "../openvm-fork/crates/vm" }
+        openvm-circuit-derive = { path = "../openvm-fork/crates/vm/derive" }
+        openvm-circuit-primitives = { path = "../openvm-fork/crates/circuits/primitives" }
+        openvm-circuit-primitives-derive = { path = "../openvm-fork/crates/circuits/primitives/derive" }
+        openvm-continuations = { path = "../openvm-fork/crates/continuations" }
+        openvm-custom-insn = { path = "../openvm-fork/crates/toolchain/custom_insn" }
+        openvm-deferral-circuit = { path = "../openvm-fork/extensions/deferral/circuit" }
+        openvm-deferral-guest = { path = "../openvm-fork/extensions/deferral/guest" }
+        openvm-deferral-transpiler = { path = "../openvm-fork/extensions/deferral/transpiler" }
+        openvm-ecc-circuit = { path = "../openvm-fork/extensions/ecc/circuit" }
+        openvm-ecc-guest = { path = "../openvm-fork/extensions/ecc/guest" }
+        openvm-ecc-sw-macros = { path = "../openvm-fork/extensions/ecc/sw-macros" }
+        openvm-ecc-transpiler = { path = "../openvm-fork/extensions/ecc/transpiler" }
+        openvm-instructions = { path = "../openvm-fork/crates/toolchain/instructions" }
+        openvm-instructions-derive = { path = "../openvm-fork/crates/toolchain/instructions/derive" }
+        openvm-keccak256 = { path = "../openvm-fork/guest-libs/keccak256" }
+        openvm-keccak256-circuit = { path = "../openvm-fork/extensions/keccak256/circuit" }
+        openvm-keccak256-guest = { path = "../openvm-fork/extensions/keccak256/guest" }
+        openvm-keccak256-transpiler = { path = "../openvm-fork/extensions/keccak256/transpiler" }
+        openvm-macros-common = { path = "../openvm-fork/crates/toolchain/macros" }
+        openvm-mod-circuit-builder = { path = "../openvm-fork/crates/circuits/mod-builder" }
+        openvm-pairing = { path = "../openvm-fork/guest-libs/pairing" }
+        openvm-pairing-circuit = { path = "../openvm-fork/extensions/pairing/circuit" }
+        openvm-pairing-guest = { path = "../openvm-fork/extensions/pairing/guest" }
+        openvm-pairing-transpiler = { path = "../openvm-fork/extensions/pairing/transpiler" }
+        openvm-platform = { path = "../openvm-fork/crates/toolchain/platform" }
+        openvm-poseidon2-air = { path = "../openvm-fork/crates/circuits/poseidon2-air" }
+        openvm-recursion-circuit = { path = "../openvm-fork/crates/recursion" }
+        openvm-recursion-circuit-derive = { path = "../openvm-fork/crates/recursion/derive" }
+        openvm-rv32-adapters = { path = "../openvm-fork/extensions/rv32-adapters" }
+        openvm-rv32im-circuit = { path = "../openvm-fork/extensions/rv32im/circuit" }
+        openvm-rv32im-guest = { path = "../openvm-fork/extensions/rv32im/guest" }
+        openvm-rv32im-transpiler = { path = "../openvm-fork/extensions/rv32im/transpiler" }
+        openvm-sdk = { path = "../openvm-fork/crates/sdk" }
+        openvm-sdk-config = { path = "../openvm-fork/crates/sdk-config" }
+        openvm-sha2 = { path = "../openvm-fork/guest-libs/sha2" }
+        openvm-sha2-air = { path = "../openvm-fork/crates/circuits/sha2-air" }
+        openvm-sha2-circuit = { path = "../openvm-fork/extensions/sha2/circuit" }
+        openvm-sha2-guest = { path = "../openvm-fork/extensions/sha2/guest" }
+        openvm-sha2-transpiler = { path = "../openvm-fork/extensions/sha2/transpiler" }
+        openvm-static-verifier = { path = "../openvm-fork/crates/static-verifier" }
+        openvm-transpiler = { path = "../openvm-fork/crates/toolchain/transpiler" }
+        openvm-verify-stark-host = { path = "../openvm-fork/crates/verify" }
+        p256 = { path = "../openvm-fork/guest-libs/p256" }
         EOF
