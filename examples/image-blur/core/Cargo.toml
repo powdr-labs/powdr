@@ -1,0 +1,13 @@
+# Shared, no_std blur implementation used by BOTH the guest (proven) and the
+# host (native recomputation). Keeping it in one crate guarantees the two run
+# bit-identical arithmetic, which the host's hash-equality check relies on.
+[workspace]
+
+[package]
+name = "image-blur-core"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+# Compile-time loop unrolling for the fixed-size blur kernel.
+crunchy = "0.2"

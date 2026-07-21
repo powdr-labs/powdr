@@ -119,4 +119,5 @@ a__0__0_0 * (1 - shift_u16__0_0) = 0
 is_valid * (is_valid - 1) = 0
 
 // Derived columns:
+sllw_msb__msb_0 (old) = 0
 is_valid (new) = 1

@@ -70,4 +70,7 @@ mult=is_valid, args=[a__2_0, 0, 0, 0]
 is_valid * (is_valid - 1) = 0
 
 // Derived columns:
+bit_shift_carry__1_1 (old) = 0
+bit_shift_carry__2_1 (old) = 0
+bit_shift_carry__3_1 (old) = 0
 is_valid (new) = 1

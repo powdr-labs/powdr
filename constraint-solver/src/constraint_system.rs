@@ -152,7 +152,7 @@ where
 pub enum ComputationMethod<T, E> {
     /// A constant value.
     Constant(T),
-    /// The quotiont (using inversion in the field) of the first argument
+    /// The quotient (using inversion in the field) of the first argument
     /// by the second argument, or zero if the latter is zero.
     QuotientOrZero(E, E),
     /// If the first argument is zero, the variable is computed using the second argument,
@@ -179,7 +179,10 @@ impl<T: Display, E: Display> Display for ComputationMethod<T, E> {
 impl<T: RuntimeConstant + One, F: Clone + Ord + Eq> ComputationMethod<T, GroupedExpression<T, F>> {
     /// Creates a computation method that computes the variable as the value of the given expression.
     pub fn expression(e: GroupedExpression<T, F>) -> Self {
-        ComputationMethod::QuotientOrZero(e, GroupedExpression::one())
+        match e.try_to_known() {
+            Some(c) => ComputationMethod::Constant(c.clone()),
+            _ => ComputationMethod::QuotientOrZero(e, GroupedExpression::one()),
+        }
     }
 }
 

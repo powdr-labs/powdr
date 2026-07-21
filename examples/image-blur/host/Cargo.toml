@@ -1,0 +1,66 @@
+[package]
+name = "image-blur-host"
+version = "0.0.0"
+edition = "2021"
+
+# Detached from the powdr workspace so `cargo build --all` / CI never builds the
+# example (it pulls the full proving stack + the `image` crate). Build it
+# explicitly from this directory instead.
+[workspace]
+members = []
+
+[features]
+default = ["metrics"]
+metrics = [
+    "powdr-openvm/metrics",
+    "openvm-sdk/metrics",
+    "openvm-stark-backend/metrics",
+    "openvm-stark-sdk/metrics",
+]
+
+[[bin]]
+name = "image-blur-host"
+path = "src/main.rs"
+
+[dependencies]
+# powdr, as local path deps into this checkout (we want to test the working tree).
+powdr-openvm = { path = "../../../openvm" }
+powdr-openvm-riscv = { path = "../../../openvm-riscv" }
+powdr-autoprecompiles = { path = "../../../autoprecompiles" }
+
+# openvm + stark-backend — same git tags and features as the powdr workspace so
+# the sources unify with the powdr path deps above. CPU only (no cuda).
+openvm-sdk = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr.1", default-features = false, features = [
+    "parallel",
+    "jemalloc",
+] }
+openvm-circuit = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr.1" }
+openvm-stark-sdk = { git = "https://github.com/powdr-labs/stark-backend.git", tag = "v2.0.0-beta.2-powdr", default-features = false, features = [
+    "parallel",
+    "jemalloc",
+] }
+openvm-stark-backend = { git = "https://github.com/powdr-labs/stark-backend.git", tag = "v2.0.0-beta.2-powdr", default-features = false, features = [
+    "parallel",
+    "jemalloc",
+] }
+
+# Shared blur, identical to what the guest proves.
+image-blur-core = { path = "../core" }
+
+# Application deps.
+image = "0.25"
+clap = { version = "^4.3", features = ["derive"] }
+serde_cbor = "0.11"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+hex = "0.4"
+
+# Logging + metrics. ForestLayer renders the proving timing tree; the metrics
+# stack captures openvm's trace-cell counters into metrics.json (consumable by
+# openvm-riscv/scripts/basic_metrics.py).
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
+tracing-forest = "0.1"
+metrics = "0.23.0"
+metrics-tracing-context = "0.16.0"
+metrics-util = "0.17.0"
+serde_json = "1.0"

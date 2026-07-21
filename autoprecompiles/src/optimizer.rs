@@ -58,16 +58,21 @@ where
 {
     #[cfg(feature = "lean-optimizer")]
     if lean::enabled() {
-        // TODO: In addition to the field, the Lean optimizer also assumes the OpenVM
-        // bus semantics with the default bus. It also ignores the degree bound.
-        // Eventually, we should pass an argument encoding which known VM we're optimizing for.
-        assert_eq!(
-            T::known_field(),
-            Some(KnownField::BabyBearField),
-            "Lean optimizer only supports BabyBear"
+        // TODO: This is a hack, we should pass the known VM into optimize()!
+        let vm = match T::known_field() {
+            Some(KnownField::BabyBearField) => lean::KnownVm::OpenVm,
+            Some(KnownField::KoalaBearField) => lean::KnownVm::Sp1,
+            other => panic!(
+                "Lean optimizer supports BabyBear (OpenVM) and KoalaBear (SP1), got {other:?}"
+            ),
+        };
+        let (optimized, next_free_id) = lean::optimize(
+            &machine,
+            bus_map,
+            column_allocator.next_poly_id,
+            vm,
+            degree_bound,
         );
-        let (optimized, next_free_id) =
-            lean::optimize(&machine, bus_map, column_allocator.next_poly_id);
         column_allocator.next_poly_id = next_free_id;
         // The Lean optimizer does not apply memory drops.
         return Ok((optimized, column_allocator, Vec::new()));

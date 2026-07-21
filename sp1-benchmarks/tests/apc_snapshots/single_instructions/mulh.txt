@@ -147,4 +147,5 @@ mul_operation__c_msb_0 * (mul_operation__c_msb_0 - 1) = 0
 is_valid * (is_valid - 1) = 0
 
 // Derived columns:
+mul_operation__product_msb__msb_0 (old) = 0
 is_valid (new) = 1
