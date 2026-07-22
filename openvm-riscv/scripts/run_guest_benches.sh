@@ -12,6 +12,11 @@ set -e
 SCRIPT_PATH=$(realpath "${BASH_SOURCE[0]}")
 SCRIPTS_DIR=$(dirname "$SCRIPT_PATH")
 
+# Cargo features for the `powdr_openvm_riscv` builds. Defaults to `metrics`; CI
+# sets `metrics,lean-optimizer` to route APC generation through the Lean4
+# apc-optimizer (selected at runtime by POWDR_USE_LEAN_OPTIMIZER).
+CARGO_FEATURES="${POWDR_BENCH_CARGO_FEATURES:-metrics}"
+
 run_bench() {
     guest="$1"
     input="$2"
@@ -54,9 +59,9 @@ run_bench() {
         # Build first, *untimed*, so binary compilation never counts toward the
         # measured generation time (the following `cargo run` is then a no-op
         # freshness check plus the actual generation work).
-        cargo build --bin powdr_openvm_riscv -r --features metrics
+        cargo build --bin powdr_openvm_riscv -r --features "${CARGO_FEATURES}"
         gen_start=$SECONDS
-        cargo run --bin powdr_openvm_riscv -r --features metrics -- \
+        cargo run --bin powdr_openvm_riscv -r --features "${CARGO_FEATURES}" -- \
             --artifacts-dir "${artifacts_dir}" generate-apcs "$guest" \
             --profile-input "$input" --apc-candidates-dir "${candidates_dir}"
         echo "$((SECONDS - gen_start))" > "${gen_time_file}"
@@ -67,7 +72,7 @@ run_bench() {
         --log "${run_name}"/psrecord.csv \
         --log-format csv \
         --plot "${run_name}"/psrecord.png \
-        "cargo run --bin powdr_openvm_riscv -r --features metrics -- --artifacts-dir \"${artifacts_dir}\" prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${candidates_dir}\""
+        "cargo run --bin powdr_openvm_riscv -r --features ${CARGO_FEATURES} -- --artifacts-dir \"${artifacts_dir}\" prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${candidates_dir}\""
 
     python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
 
