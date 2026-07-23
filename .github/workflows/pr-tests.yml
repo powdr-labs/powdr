@@ -130,7 +130,9 @@ jobs:
   # sp1-benchmarks is a standalone workspace (excluded from the main workspace
   # because its SP1 dependency's plonky3 shares the 0.4 semver bucket with
   # openvm's and can't co-resolve in one lockfile). It is therefore not covered
-  # by the --workspace archive above and needs its own job.
+  # by the --workspace archive above and needs its own job. Its dependency
+  # closure (SP1 core + git-sourced powdr) is disjoint from the main workspace,
+  # so it gets its own cache key rather than sharing the main build.
   test_sp1_benchmarks:
     runs-on: warp-ubuntu-2404-x64-8x
 
@@ -138,6 +140,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: ⚡ Rust cache (sp1-benchmarks)
+        uses: WarpBuilds/cache@v1
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            sp1-benchmarks/target/
+          key: ${{ runner.os }}-cargo-sp1-benchmarks-${{ hashFiles('sp1-benchmarks/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-sp1-benchmarks-
       - name: Install Rust toolchain 1.91.1 (stable)
         run: rustup toolchain install 1.91.1
       - name: Set cargo to perform shallow clones
