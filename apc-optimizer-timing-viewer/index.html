@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APC Optimizer Timing Viewer</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --border: #e2e2e2;
+    --header-bg: #f6f7f9; --row-hover: #eef4ff; --row-sel: #d8e8ff;
+    --accent: #2b6cb0; --ref: #e53e3e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--fg); background: var(--bg); }
+  body { display: flex; flex-direction: column; }
+  header {
+    padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--header-bg);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; }
+  header .meta { font-size: 12px; color: var(--muted); }
+  header .spacer { flex: 1; }
+  .loader { display: flex; align-items: center; gap: 6px; }
+  .loader input[type=text] { width: 340px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; }
+  .loader button, label.filebtn {
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 5px; background: #fff;
+    cursor: pointer; font-size: 12px;
+  }
+  .loader button:hover, label.filebtn:hover { background: #f0f0f0; }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  #left { width: 46%; min-width: 360px; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+  #right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .pane-tools { padding: 6px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; font-size: 12px; flex-wrap: wrap; }
+  .pane-tools select, .pane-tools input { font-size: 12px; padding: 2px 5px; }
+
+  /* Drop overlay */
+  #dropzone {
+    position: fixed; inset: 0; background: rgba(43,108,176,0.12); border: 3px dashed var(--accent);
+    display: none; align-items: center; justify-content: center; z-index: 50; font-size: 22px; color: var(--accent);
+  }
+  #dropzone.show { display: flex; }
+
+  /* Table */
+  .table-wrap { flex: 1; overflow: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  thead th {
+    position: sticky; top: 0; background: var(--header-bg); border-bottom: 2px solid var(--border);
+    padding: 6px 9px; text-align: right; cursor: pointer; white-space: nowrap; user-select: none;
+  }
+  thead th:first-child, tbody td:first-child { text-align: left; }
+  thead th.bench, tbody td.bench { text-align: left; }
+  thead th .arrow { color: var(--accent); font-size: 10px; margin-left: 3px; }
+  tbody td { padding: 3px 9px; text-align: right; border-bottom: 1px solid #f2f2f2; white-space: nowrap; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody tr.sel { background: var(--row-sel); }
+  .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .factor-hi { color: #b7791f; font-weight: 600; }
+  .factor-lo { color: #2f855a; font-weight: 600; }
+
+  /* Charts */
+  .chart-section { flex: 1; display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--border); }
+  .chart-section:last-child { border-bottom: none; }
+  .chart-title { padding: 6px 10px 0; font-size: 13px; font-weight: 600; }
+  .chart-holder { flex: 1; min-height: 0; position: relative; }
+  svg { width: 100%; height: 100%; display: block; }
+  .axis line, .axis path { stroke: #cbd5e0; }
+  .axis text { fill: var(--muted); font-size: 10px; }
+  .grid line { stroke: #eef0f2; }
+  .axis-label { fill: var(--fg); font-size: 11px; font-weight: 600; }
+  .tooltip {
+    position: fixed; pointer-events: none; background: #1a202c; color: #fff; padding: 6px 8px;
+    border-radius: 5px; font-size: 11px; line-height: 1.4; z-index: 60; display: none; white-space: nowrap;
+  }
+  .legend { padding: 4px 10px 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; }
+  .legend span { display: inline-flex; align-items: center; }
+  .empty { color: var(--muted); font-size: 14px; padding: 40px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>APC Optimizer Timing</h1>
+  <div class="meta" id="meta"></div>
+  <div class="spacer"></div>
+  <div class="loader">
+    <input type="text" id="urlInput" placeholder="Paste a link to a hosted JSON (GitHub blob ok) and press Enter">
+    <button id="urlBtn">Load URL</button>
+    <label class="filebtn">Open file<input type="file" id="fileInput" accept=".json,application/json" hidden></label>
+  </div>
+</header>
+
+<main>
+  <section id="left">
+    <div class="pane-tools">
+      <span>Benchmark:</span>
+      <select id="benchFilter"><option value="">All</option></select>
+      <span id="rowCount" style="color:var(--muted)"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="tbl">
+        <thead><tr id="headRow"></tr></thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+      <div class="empty" id="tableEmpty">Drag &amp; drop the timing JSON anywhere, open a file, or load a URL.</div>
+    </div>
+  </section>
+
+  <section id="right">
+    <div class="chart-section">
+      <div class="chart-title">Distribution of slowdown factor (lean / powdr)</div>
+      <div class="chart-holder"><svg id="histSvg"></svg></div>
+    </div>
+    <div class="chart-section">
+      <div class="chart-title">Scatter</div>
+      <div class="pane-tools">
+        <span>x:</span><select id="xAxis"></select>
+        <span>y:</span><select id="yAxis"></select>
+        <label><input type="checkbox" id="logScale"> log scale (both axes)</label>
+      </div>
+      <div class="chart-holder"><svg id="scatterSvg"></svg></div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </section>
+</main>
+
+<div id="dropzone">Drop the timing JSON to load</div>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Data model
+// ---------------------------------------------------------------------------
+// Input JSON shape (produced by `time-optimizers` + compare_apc_optimizers.sh):
+//   { "openvm-eth-version": "...",
+//     "benchmarks": [ { "name": "...", "apcs": [
+//        { "variables", "constraints", "bus_interactions", "rust_runtime", "lean_runtime" } ] } ] }
+// We call the native Rust optimizer "powdr" and the apc-optimizer "lean", per the request.
+
+let POINTS = [];          // flat list of all APC records
+let BENCH_COLORS = {};
+const PALETTE = ["#2b6cb0","#dd6b20","#38a169","#805ad5","#d53f8c","#319795",
+                 "#d69e2e","#e53e3e","#3182ce","#718096","#00897b","#8e44ad"];
+
+// Axis metrics available in the scatter plot.
+const METRICS = {
+  constraints:      { label: "Constraints",            get: d => d.constraints },
+  bus_interactions: { label: "Bus interactions",       get: d => d.bus_interactions },
+  variables:        { label: "Variables",              get: d => d.variables },
+  powdr:            { label: "powdr runtime (s)",       get: d => d.powdr },
+  lean:             { label: "Lean runtime (s)",        get: d => d.lean },
+  factor:           { label: "Slowdown (lean / powdr)", get: d => d.factor },
+};
+
+// Left-table columns.
+const COLUMNS = [
+  { key: "benchmark", label: "Benchmark", cls: "bench", type: "str", get: d => d.benchmark },
+  { key: "apc",       label: "APC",       type: "num", get: d => d.index },
+  { key: "lean",      label: "Lean (s)",  type: "num", get: d => d.lean,  fmt: v => v.toFixed(3) },
+  { key: "powdr",     label: "powdr (s)", type: "num", get: d => d.powdr, fmt: v => v.toFixed(3) },
+  { key: "factor",    label: "lean / powdr", type: "num", get: d => d.factor,
+    fmt: v => (v == null || !isFinite(v)) ? "—" : v.toFixed(2) + "×" },
+];
+
+let sortState = { key: "factor", dir: -1 }; // dir: 1 asc, -1 desc
+let benchFilter = "";
+let selectedId = null;
+
+function buildPoints(json) {
+  const pts = [];
+  const benches = Array.isArray(json.benchmarks) ? json.benchmarks : [];
+  for (const b of benches) {
+    const name = b.name ?? "(unnamed)";
+    const apcs = Array.isArray(b.apcs) ? b.apcs : [];
+    apcs.forEach((a, i) => {
+      const powdr = +a.rust_runtime, lean = +a.lean_runtime;
+      const factor = powdr > 0 ? lean / powdr : NaN;
+      pts.push({
+        id: pts.length, benchmark: name, index: i,
+        variables: +a.variables, constraints: +a.constraints, bus_interactions: +a.bus_interactions,
+        powdr, lean, factor,
+      });
+    });
+  }
+  return pts;
+}
+
+function assignColors(json) {
+  BENCH_COLORS = {};
+  (json.benchmarks || []).forEach((b, i) => { BENCH_COLORS[b.name] = PALETTE[i % PALETTE.length]; });
+}
+
+// ---------------------------------------------------------------------------
+// Rendering: header meta, table, filter
+// ---------------------------------------------------------------------------
+function renderMeta(json) {
+  const parts = [];
+  const n = POINTS.length;
+  const nb = (json.benchmarks || []).length;
+  parts.push(`${n.toLocaleString()} APCs · ${nb} benchmarks`);
+  if (json["openvm-eth-version"]) parts.push(`openvm-eth ${short(json["openvm-eth-version"])}`);
+  if (json["apc-optimizer-version"]) parts.push(`apc-optimizer ${short(json["apc-optimizer-version"])}`);
+  if (json["powdr-version"]) parts.push(`powdr ${short(json["powdr-version"])}`);
+  document.getElementById("meta").textContent = parts.join("  ·  ");
+}
+function short(h) { return /^[0-9a-f]{7,}$/i.test(h) ? h.slice(0, 8) : h; }
+
+function renderBenchFilter(json) {
+  const sel = document.getElementById("benchFilter");
+  sel.innerHTML = '<option value="">All</option>';
+  (json.benchmarks || []).forEach(b => {
+    const o = document.createElement("option");
+    o.value = b.name; o.textContent = `${b.name} (${(b.apcs || []).length})`;
+    sel.appendChild(o);
+  });
+}
+
+function renderHead() {
+  const tr = document.getElementById("headRow");
+  tr.innerHTML = "";
+  for (const c of COLUMNS) {
+    const th = document.createElement("th");
+    if (c.cls) th.className = c.cls;
+    th.textContent = c.label;
+    if (sortState.key === c.key) {
+      const a = document.createElement("span");
+      a.className = "arrow"; a.textContent = sortState.dir === 1 ? "▲" : "▼";
+      th.appendChild(a);
+    }
+    th.onclick = () => {
+      if (sortState.key === c.key) sortState.dir *= -1;
+      else sortState = { key: c.key, dir: c.type === "str" ? 1 : -1 };
+      renderHead(); renderTable();
+    };
+    tr.appendChild(th);
+  }
+}
+
+function filteredPoints() {
+  return benchFilter ? POINTS.filter(p => p.benchmark === benchFilter) : POINTS;
+}
+
+function sortedPoints() {
+  const col = COLUMNS.find(c => c.key === sortState.key);
+  const pts = filteredPoints().slice();
+  pts.sort((a, b) => {
+    let va = col.get(a), vb = col.get(b);
+    if (col.type === "str") return sortState.dir * String(va).localeCompare(String(vb));
+    // numbers: push NaN/Infinity to the end regardless of direction
+    const na = (va == null || !isFinite(va)), nb = (vb == null || !isFinite(vb));
+    if (na && nb) return 0;
+    if (na) return 1;
+    if (nb) return -1;
+    return sortState.dir * (va - vb);
+  });
+  return pts;
+}
+
+function renderTable() {
+  const body = document.getElementById("tblBody");
+  const empty = document.getElementById("tableEmpty");
+  const pts = sortedPoints();
+  document.getElementById("rowCount").textContent = `${pts.length.toLocaleString()} rows`;
+  empty.style.display = POINTS.length ? "none" : "block";
+
+  const frag = document.createDocumentFragment();
+  for (const p of pts) {
+    const tr = document.createElement("tr");
+    tr.dataset.id = p.id;
+    if (p.id === selectedId) tr.className = "sel";
+    for (const c of COLUMNS) {
+      const td = document.createElement("td");
+      if (c.cls) td.className = c.cls;
+      let v = c.get(p);
+      if (c.key === "benchmark") {
+        const sw = document.createElement("span");
+        sw.className = "swatch"; sw.style.background = BENCH_COLORS[p.benchmark] || "#999";
+        td.appendChild(sw); td.appendChild(document.createTextNode(v));
+      } else if (c.key === "factor") {
+        td.textContent = c.fmt(v);
+        if (isFinite(v)) td.classList.add(v >= 1 ? "factor-hi" : "factor-lo");
+      } else {
+        td.textContent = c.fmt ? c.fmt(v) : v;
+      }
+      tr.appendChild(td);
+    }
+    tr.onclick = () => {
+      selectedId = (selectedId === p.id) ? null : p.id;
+      document.querySelectorAll("#tblBody tr.sel").forEach(r => r.classList.remove("sel"));
+      if (selectedId === p.id) tr.classList.add("sel");
+      renderScatter();
+    };
+    frag.appendChild(tr);
+  }
+  body.innerHTML = "";
+  body.appendChild(frag);
+}
+
+// ---------------------------------------------------------------------------
+// SVG chart helpers
+// ---------------------------------------------------------------------------
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function clear(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
+
+function niceTicks(min, max, count) {
+  if (min === max) { min -= 1; max += 1; }
+  const span = max - min, step0 = span / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const norm = step0 / mag;
+  const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+  const ticks = [];
+  for (let t = Math.ceil(min / step) * step; t <= max + 1e-9; t += step) ticks.push(t);
+  return ticks;
+}
+function logTicks(min, max) {
+  const ticks = [];
+  const lo = Math.floor(Math.log10(min)), hi = Math.ceil(Math.log10(max));
+  for (let e = lo; e <= hi; e++) ticks.push(Math.pow(10, e));
+  return ticks;
+}
+function fmtNum(v) {
+  if (v === 0) return "0";
+  const a = Math.abs(v);
+  if (a >= 1000 || a < 0.01) return v.toExponential(0).replace("e+", "e");
+  if (Number.isInteger(v)) return String(v);
+  return v.toFixed(a < 1 ? 3 : 2);
+}
+
+// Returns a scale object with .map(value)->pixel and .ticks()
+function makeScale(min, max, px0, px1, log) {
+  if (log) {
+    min = Math.max(min, 1e-9);
+    if (max <= min) max = min * 10;
+    const l0 = Math.log10(min), l1 = Math.log10(max);
+    return {
+      map: v => px0 + (Math.log10(Math.max(v, 1e-9)) - l0) / (l1 - l0) * (px1 - px0),
+      ticks: () => logTicks(min, max).filter(t => t >= min * 0.999 && t <= max * 1.001),
+      min, max,
+    };
+  }
+  if (max === min) { max = min + 1; }
+  return {
+    map: v => px0 + (v - min) / (max - min) * (px1 - px0),
+    ticks: () => niceTicks(min, max, 6),
+    min, max,
+  };
+}
+
+const tooltip = document.getElementById("tooltip");
+function showTip(html, ev) {
+  tooltip.innerHTML = html; tooltip.style.display = "block";
+  tooltip.style.left = (ev.clientX + 12) + "px";
+  tooltip.style.top = (ev.clientY + 12) + "px";
+}
+function hideTip() { tooltip.style.display = "none"; }
+
+// ---------------------------------------------------------------------------
+// Histogram of slowdown factors
+// ---------------------------------------------------------------------------
+function renderHistogram() {
+  const svg = document.getElementById("histSvg");
+  clear(svg);
+  const W = svg.clientWidth, H = svg.clientHeight;
+  if (!W || !H) return;
+  const m = { t: 12, r: 16, b: 34, l: 46 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+
+  const vals = filteredPoints().map(p => p.factor).filter(v => isFinite(v) && v > 0);
+  if (!vals.length) return;
+
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const nbins = 40;
+  const step = (max - min) / nbins || 1;
+  const bins = new Array(nbins).fill(0);
+  for (const v of vals) {
+    let i = Math.floor((v - min) / step);
+    if (i >= nbins) i = nbins - 1;
+    if (i < 0) i = 0;
+    bins[i]++;
+  }
+  const maxCount = Math.max(...bins);
+
+  const x = makeScale(min, max, m.l, m.l + iw, false);
+  const y = makeScale(0, maxCount, m.t + ih, m.t, false);
+
+  const g = el("g", {}, svg);
+  // y grid + axis
+  const yaxis = el("g", { class: "axis grid" }, g);
+  for (const t of y.ticks()) {
+    const yy = y.map(t);
+    el("line", { x1: m.l, y1: yy, x2: m.l + iw, y2: yy }, yaxis);
+    const tx = el("text", { x: m.l - 6, y: yy + 3, "text-anchor": "end" }, yaxis);
+    tx.textContent = fmtNum(t);
+  }
+  // bars
+  for (let i = 0; i < nbins; i++) {
+    if (!bins[i]) continue;
+    const x0 = x.map(min + i * step), x1 = x.map(min + (i + 1) * step);
+    const yy = y.map(bins[i]);
+    const r = el("rect", {
+      x: x0 + 0.5, y: yy, width: Math.max(1, x1 - x0 - 1), height: (m.t + ih) - yy,
+      fill: "#2b6cb0", opacity: 0.85,
+    }, g);
+    const lo = (min + i * step), hi = (min + (i + 1) * step);
+    r.addEventListener("mousemove", ev => showTip(`${lo.toFixed(2)}×–${hi.toFixed(2)}×<br>${bins[i]} APCs`, ev));
+    r.addEventListener("mouseleave", hideTip);
+  }
+  // x axis
+  const xaxis = el("g", { class: "axis" }, g);
+  el("line", { x1: m.l, y1: m.t + ih, x2: m.l + iw, y2: m.t + ih }, xaxis);
+  for (const t of x.ticks()) {
+    const xx = x.map(t);
+    el("line", { x1: xx, y1: m.t + ih, x2: xx, y2: m.t + ih + 4 }, xaxis);
+    const tx = el("text", { x: xx, y: m.t + ih + 15, "text-anchor": "middle" }, xaxis);
+    tx.textContent = fmtNum(t) + "×";
+  }
+  // reference line at 1x
+  if (min <= 1 && max >= 1) {
+    const xx = x.map(1);
+    el("line", { x1: xx, y1: m.t, x2: xx, y2: m.t + ih, stroke: "#e53e3e", "stroke-dasharray": "4 3", "stroke-width": 1.5 }, g);
+    const tx = el("text", { x: xx + 3, y: m.t + 10, fill: "#e53e3e", "font-size": 10 }, g);
+    tx.textContent = "1× (equal)";
+  }
+  // labels
+  const xl = el("text", { class: "axis-label", x: m.l + iw / 2, y: H - 4, "text-anchor": "middle" }, g);
+  xl.textContent = "slowdown factor (lean / powdr)";
+  const yl = el("text", { class: "axis-label", x: 12, y: m.t + ih / 2, "text-anchor": "middle",
+    transform: `rotate(-90 12 ${m.t + ih / 2})` }, g);
+  yl.textContent = "# APCs";
+}
+
+// ---------------------------------------------------------------------------
+// Scatter plot
+// ---------------------------------------------------------------------------
+function renderScatter() {
+  const svg = document.getElementById("scatterSvg");
+  clear(svg);
+  const W = svg.clientWidth, H = svg.clientHeight;
+  if (!W || !H) return;
+  const m = { t: 12, r: 16, b: 40, l: 56 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+
+  const xKey = document.getElementById("xAxis").value;
+  const yKey = document.getElementById("yAxis").value;
+  const log = document.getElementById("logScale").checked;
+  const xM = METRICS[xKey], yM = METRICS[yKey];
+
+  let pts = filteredPoints().map(p => ({ p, x: xM.get(p), y: yM.get(p) }))
+    .filter(d => isFinite(d.x) && isFinite(d.y) && (!log || (d.x > 0 && d.y > 0)));
+  if (!pts.length) return;
+
+  const xs = pts.map(d => d.x), ys = pts.map(d => d.y);
+  const x = makeScale(Math.min(...xs), Math.max(...xs), m.l, m.l + iw, log);
+  const y = makeScale(Math.min(...ys), Math.max(...ys), m.t + ih, m.t, log);
+
+  const g = el("g", {}, svg);
+  // grid + axes
+  const grid = el("g", { class: "axis grid" }, g);
+  for (const t of y.ticks()) {
+    const yy = y.map(t);
+    el("line", { x1: m.l, y1: yy, x2: m.l + iw, y2: yy }, grid);
+    const tx = el("text", { x: m.l - 6, y: yy + 3, "text-anchor": "end" }, grid);
+    tx.textContent = fmtNum(t);
+  }
+  const xaxis = el("g", { class: "axis" }, g);
+  el("line", { x1: m.l, y1: m.t + ih, x2: m.l + iw, y2: m.t + ih }, xaxis);
+  for (const t of x.ticks()) {
+    const xx = x.map(t);
+    el("line", { x1: xx, y1: m.t + ih, x2: xx, y2: m.t + ih + 4 }, xaxis);
+    const tx = el("text", { x: xx, y: m.t + ih + 15, "text-anchor": "middle" }, xaxis);
+    tx.textContent = fmtNum(t);
+  }
+  // points
+  for (const d of pts) {
+    const sel = d.p.id === selectedId;
+    const c = el("circle", {
+      cx: x.map(d.x), cy: y.map(d.y), r: sel ? 5 : 2.6,
+      fill: BENCH_COLORS[d.p.benchmark] || "#999",
+      opacity: sel ? 1 : 0.62,
+      stroke: sel ? "#1a202c" : "none", "stroke-width": sel ? 2 : 0,
+    }, g);
+    c.addEventListener("mousemove", ev => showTip(
+      `<b>${d.p.benchmark}</b> #${d.p.index}<br>` +
+      `${xM.label}: ${fmtNum(d.x)}<br>${yM.label}: ${fmtNum(d.y)}<br>` +
+      `lean ${d.p.lean.toFixed(3)}s / powdr ${d.p.powdr.toFixed(3)}s`, ev));
+    c.addEventListener("mouseleave", hideTip);
+    c.addEventListener("click", () => {
+      selectedId = (selectedId === d.p.id) ? null : d.p.id;
+      renderTable(); renderScatter();
+      const row = document.querySelector(`#tblBody tr[data-id="${selectedId}"]`);
+      if (row) row.scrollIntoView({ block: "center" });
+    });
+  }
+  // labels
+  const xl = el("text", { class: "axis-label", x: m.l + iw / 2, y: H - 6, "text-anchor": "middle" }, g);
+  xl.textContent = xM.label + (log ? " (log)" : "");
+  const yl = el("text", { class: "axis-label", x: 14, y: m.t + ih / 2, "text-anchor": "middle",
+    transform: `rotate(-90 14 ${m.t + ih / 2})` }, g);
+  yl.textContent = yM.label + (log ? " (log)" : "");
+}
+
+function renderLegend(json) {
+  const lg = document.getElementById("legend");
+  lg.innerHTML = "";
+  (json.benchmarks || []).forEach(b => {
+    const s = document.createElement("span");
+    s.innerHTML = `<span class="swatch" style="background:${BENCH_COLORS[b.name]}"></span>${b.name}`;
+    lg.appendChild(s);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Axis dropdowns
+// ---------------------------------------------------------------------------
+function initAxisSelectors() {
+  const xs = document.getElementById("xAxis"), ys = document.getElementById("yAxis");
+  for (const k in METRICS) {
+    xs.appendChild(new Option(METRICS[k].label, k));
+    ys.appendChild(new Option(METRICS[k].label, k));
+  }
+  xs.value = "constraints"; ys.value = "factor";
+  xs.onchange = ys.onchange = renderScatter;
+  document.getElementById("logScale").onchange = renderScatter;
+}
+
+// ---------------------------------------------------------------------------
+// Top-level render
+// ---------------------------------------------------------------------------
+let CURRENT_JSON = null;
+function renderAll(json) {
+  CURRENT_JSON = json;
+  assignColors(json);
+  POINTS = buildPoints(json);
+  selectedId = null; benchFilter = "";
+  document.getElementById("benchFilter").value = "";
+  renderMeta(json);
+  renderBenchFilter(json);
+  renderHead();
+  renderTable();
+  renderLegend(json);
+  renderHistogram();
+  renderScatter();
+}
+
+// ---------------------------------------------------------------------------
+// Data loading (file / URL), matching the metrics-viewer conventions
+// ---------------------------------------------------------------------------
+function handleData(json, sourceLabel) {
+  if (!json || !Array.isArray(json.benchmarks)) {
+    alert("Not a recognized timing JSON: expected a top-level `benchmarks` array.");
+    return;
+  }
+  renderAll(json);
+}
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try { handleData(JSON.parse(reader.result), file.name); }
+    catch (e) { alert("Failed to parse JSON: " + e.message); }
+  };
+  reader.readAsText(file);
+}
+
+async function loadFromUrl(url, updateParam = true) {
+  const raw = url.replace(
+    /github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.*)/,
+    "raw.githubusercontent.com/$1/$2/$3/$4");
+  try {
+    const resp = await fetch(raw);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const json = await resp.json();
+    if (updateParam) {
+      const params = new URLSearchParams(window.location.search);
+      params.set("data", url);
+      history.replaceState(null, "", window.location.pathname + "?" + params.toString());
+    }
+    document.getElementById("urlInput").value = url;
+    handleData(json, url);
+  } catch (e) {
+    alert("Failed to load URL: " + e.message);
+  }
+}
+
+// Drag & drop anywhere.
+const dz = document.getElementById("dropzone");
+let dragDepth = 0;
+window.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; dz.classList.add("show"); });
+window.addEventListener("dragover", e => { e.preventDefault(); });
+window.addEventListener("dragleave", e => { e.preventDefault(); if (--dragDepth <= 0) dz.classList.remove("show"); });
+window.addEventListener("drop", e => {
+  e.preventDefault(); dragDepth = 0; dz.classList.remove("show");
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+
+document.getElementById("fileInput").addEventListener("change", e => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+document.getElementById("urlBtn").addEventListener("click", () => {
+  const u = document.getElementById("urlInput").value.trim(); if (u) loadFromUrl(u);
+});
+document.getElementById("urlInput").addEventListener("keydown", e => {
+  if (e.key === "Enter") { const u = e.target.value.trim(); if (u) loadFromUrl(u); }
+});
+document.getElementById("benchFilter").addEventListener("change", e => {
+  benchFilter = e.target.value; selectedId = null;
+  renderTable(); renderHistogram(); renderScatter();
+});
+
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (POINTS.length) { renderHistogram(); renderScatter(); } }, 120);
+});
+
+// Init
+initAxisSelectors();
+(function init() {
+  const params = new URLSearchParams(window.location.search);
+  const dataUrl = params.get("data") || params.get("url");
+  if (dataUrl) loadFromUrl(dataUrl, false);
+})();
+</script>
+</body>
+</html>

@@ -2,8 +2,8 @@
 //! FFI, selected at runtime by `POWDR_USE_LEAN_OPTIMIZER`. Compiled only with the `lean-optimizer`
 //! feature.
 
-pub(super) use powdr_autoprecompiles_lean_ffi::KnownVm;
-use powdr_number::FieldElement;
+use powdr_autoprecompiles_lean_ffi::KnownVm;
+use powdr_number::{FieldElement, KnownField};
 
 use crate::{BusMap, DegreeBound, SymbolicMachine};
 
@@ -13,6 +13,17 @@ pub(super) fn enabled() -> bool {
     std::env::var("POWDR_USE_LEAN_OPTIMIZER")
         .map(|v| v == "1" || v == "true")
         .unwrap_or(false)
+}
+
+/// Map the machine's field to the VM the apc-optimizer should target.
+fn known_vm<T: FieldElement>() -> KnownVm {
+    match T::known_field() {
+        Some(KnownField::BabyBearField) => KnownVm::OpenVm,
+        Some(KnownField::KoalaBearField) => KnownVm::Sp1,
+        other => {
+            panic!("Lean optimizer supports BabyBear (OpenVM) and KoalaBear (SP1), got {other:?}")
+        }
+    }
 }
 
 /// The apc-optimizer's `{machine, next_free_id}` FFI result: the optimized machine plus the
@@ -36,13 +47,13 @@ pub(super) fn optimize<T, BusTypes>(
     machine: &SymbolicMachine<T>,
     bus_map: &BusMap<BusTypes>,
     next_free_id: u64,
-    vm: KnownVm,
     degree_bound: DegreeBound,
 ) -> (SymbolicMachine<T>, u64)
 where
     T: FieldElement,
     BusTypes: serde::Serialize,
 {
+    let vm = known_vm::<T>();
     let input =
         serde_json::json!({ "machine": machine, "bus_map": bus_map, "next_free_id": next_free_id });
     let input_str = serde_json::to_string(&input).expect("serializing machine for Lean FFI");

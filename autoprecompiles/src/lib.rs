@@ -320,6 +320,16 @@ impl ColumnAllocator {
         }
     }
 
+    /// Create an allocator that will issue ids starting at `next_poly_id`, with no column
+    /// substitutions recorded. Useful when reconstructing the allocator state for a machine whose
+    /// next free id is already known.
+    pub fn with_next_poly_id(next_poly_id: u64) -> Self {
+        Self {
+            subs: Vec::new(),
+            next_poly_id,
+        }
+    }
+
     pub fn issue_next_poly_id(&mut self) -> u64 {
         let id = self.next_poly_id;
         self.next_poly_id += 1;
@@ -330,6 +340,52 @@ impl ColumnAllocator {
     pub fn is_known_id(&self, poly_id: u64) -> bool {
         poly_id < self.next_poly_id
     }
+}
+
+/// Serializable snapshot of a single APC's pre-optimization input circuit, together with the bus
+/// map and the allocator's next free column id — everything [`optimizer::compare_optimizers`] needs
+/// to re-run both optimizers offline. Written by [`build`] when `POWDR_APC_DUMP_DIR` is set.
+#[derive(Serialize, Deserialize)]
+pub struct ApcInput<T, C> {
+    pub machine: SymbolicMachine<T>,
+    pub bus_map: BusMap<C>,
+    pub next_free_id: u64,
+    pub degree_bound: DegreeBound,
+}
+
+/// Directory to dump pre-optimization APC input circuits into, read from `POWDR_APC_DUMP_DIR`. When
+/// set, [`build`] serializes each candidate's input circuit and skips optimization, so a dump pass
+/// over all candidates only pays for symbolic-machine construction, not the optimizer.
+fn apc_input_dump_dir() -> Option<PathBuf> {
+    std::env::var_os("POWDR_APC_DUMP_DIR")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+}
+
+/// Serialize one pre-optimization input circuit to a fresh `.cbor` file in `dump_dir`. Thread-safe:
+/// candidates are built in parallel, and each gets a filename unique across workers and reruns.
+fn dump_apc_input<A: Adapter>(
+    dump_dir: &Path,
+    machine: &SymbolicMachine<A::PowdrField>,
+    bus_map: &BusMap<A::CustomBusTypes>,
+    next_free_id: u64,
+    degree_bound: DegreeBound,
+) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    std::fs::create_dir_all(dump_dir).expect("creating APC dump dir");
+    let index = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let path = dump_dir.join(format!("apc_input_{}_{index}.cbor", std::process::id()));
+    let file = std::fs::File::create(&path).expect("creating APC dump file");
+    let input = ApcInput {
+        machine: machine.clone(),
+        bus_map: bus_map.clone(),
+        next_free_id,
+        degree_bound,
+    };
+    serde_cbor::to_writer(std::io::BufWriter::new(file), &input)
+        .expect("serializing APC input dump");
 }
 
 pub fn build<A: Adapter>(
@@ -403,6 +459,22 @@ pub fn build<A: Adapter>(
     metrics::counter!("before_opt_constraints", &labels).absolute(machine.constraints.len() as u64);
     metrics::counter!("before_opt_interactions", &labels)
         .absolute(machine.bus_interactions.len() as u64);
+
+    // Benchmark-dump mode (`POWDR_APC_DUMP_DIR`): serialize the pre-optimization input circuit and
+    // bail out before optimization — the expensive part — so a dump pass over every candidate is
+    // cheap. The two optimizers are timed offline from the dumped inputs (see
+    // `optimizer::compare_optimizers`). We return `InputDumpOnly` so the caller drops this
+    // (non-)candidate; the unoptimized machine would otherwise break downstream ranking.
+    if let Some(dump_dir) = apc_input_dump_dir() {
+        dump_apc_input::<A>(
+            &dump_dir,
+            &machine,
+            &vm_config.bus_map,
+            column_allocator.next_poly_id,
+            degree_bound,
+        );
+        return Err(crate::constraint_optimizer::Error::InputDumpOnly);
+    }
 
     let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
         machine,

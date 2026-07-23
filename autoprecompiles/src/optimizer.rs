@@ -10,8 +10,6 @@ use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_boun
 use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_number::FieldElement;
-#[cfg(feature = "lean-optimizer")]
-use powdr_number::KnownField;
 
 use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
@@ -38,6 +36,45 @@ mod lean;
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
 pub fn optimize<T, B, BusTypes, MemoryBus>(
+    machine: SymbolicMachine<T>,
+    bus_interaction_handler: B,
+    degree_bound: DegreeBound,
+    bus_map: &BusMap<BusTypes>,
+    column_allocator: ColumnAllocator,
+    export_options: &mut ExportOptions,
+) -> Result<(SymbolicMachine<T>, ColumnAllocator), crate::constraint_optimizer::Error>
+where
+    T: FieldElement,
+    B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
+    BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
+    MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+{
+    #[cfg(feature = "lean-optimizer")]
+    if lean::enabled() {
+        let mut column_allocator = column_allocator;
+        let (optimized, next_free_id) = lean::optimize(
+            &machine,
+            bus_map,
+            column_allocator.next_poly_id,
+            degree_bound,
+        );
+        column_allocator.next_poly_id = next_free_id;
+        return Ok((optimized, column_allocator));
+    }
+
+    optimize_rust::<T, B, BusTypes, MemoryBus>(
+        machine,
+        bus_interaction_handler,
+        degree_bound,
+        bus_map,
+        column_allocator,
+        export_options,
+    )
+}
+
+/// The native Rust optimization pipeline. This is the body of [`optimize`] when the Lean optimizer
+/// is not selected; it is factored out so that [`compare_optimizers`] can time it directly.
+fn optimize_rust<T, B, BusTypes, MemoryBus>(
     mut machine: SymbolicMachine<T>,
     bus_interaction_handler: B,
     degree_bound: DegreeBound,
@@ -51,27 +88,6 @@ where
     BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
-    #[cfg(feature = "lean-optimizer")]
-    if lean::enabled() {
-        // TODO: This is a hack, we should pass the known VM into optimize()!
-        let vm = match T::known_field() {
-            Some(KnownField::BabyBearField) => lean::KnownVm::OpenVm,
-            Some(KnownField::KoalaBearField) => lean::KnownVm::Sp1,
-            other => panic!(
-                "Lean optimizer supports BabyBear (OpenVM) and KoalaBear (SP1), got {other:?}"
-            ),
-        };
-        let (optimized, next_free_id) = lean::optimize(
-            &machine,
-            bus_map,
-            column_allocator.next_poly_id,
-            vm,
-            degree_bound,
-        );
-        column_allocator.next_poly_id = next_free_id;
-        return Ok((optimized, column_allocator));
-    }
-
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {
@@ -221,6 +237,70 @@ where
         constraint_system_to_symbolic_machine(constraint_system),
         column_allocator,
     ))
+}
+
+/// The runtime (in seconds) of both optimizers on a single input circuit, plus the input's size.
+#[cfg(feature = "lean-optimizer")]
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OptimizerComparison {
+    pub variables: usize,
+    pub constraints: usize,
+    pub bus_interactions: usize,
+    pub rust_runtime: f64,
+    pub lean_runtime: f64,
+}
+
+/// Run *both* the Rust and Lean optimizers on the same input circuit and return each one's runtime
+/// alongside the input circuit's size. Used to benchmark the two optimizers against each other; the
+/// optimized machines themselves are discarded.
+#[cfg(feature = "lean-optimizer")]
+pub fn compare_optimizers<T, B, BusTypes, MemoryBus>(
+    machine: SymbolicMachine<T>,
+    bus_interaction_handler: B,
+    degree_bound: DegreeBound,
+    bus_map: &BusMap<BusTypes>,
+    next_free_id: u64,
+) -> OptimizerComparison
+where
+    T: FieldElement,
+    B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
+    BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
+    MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
+{
+    use crate::powdr::UniqueReferences;
+    use std::time::Instant;
+
+    let variables = machine.unique_references().count();
+    let constraints = machine.constraints.len();
+    let bus_interactions = machine.bus_interactions.len();
+
+    // Time the Lean optimizer (operates on a borrow of the input).
+    let lean_start = Instant::now();
+    let _ = lean::optimize(&machine, bus_map, next_free_id, degree_bound);
+    let lean_runtime = lean_start.elapsed().as_secs_f64();
+
+    // Time the Rust optimizer on the identical input. Export is disabled.
+    let mut export_options = ExportOptions::default();
+    let column_allocator = ColumnAllocator::with_next_poly_id(next_free_id);
+    let rust_start = Instant::now();
+    optimize_rust::<T, B, BusTypes, MemoryBus>(
+        machine,
+        bus_interaction_handler,
+        degree_bound,
+        bus_map,
+        column_allocator,
+        &mut export_options,
+    )
+    .expect("Rust optimizer failed during comparison");
+    let rust_runtime = rust_start.elapsed().as_secs_f64();
+
+    OptimizerComparison {
+        variables,
+        constraints,
+        bus_interactions,
+        rust_runtime,
+        lean_runtime,
+    }
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(

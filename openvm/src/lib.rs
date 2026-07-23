@@ -120,6 +120,8 @@ pub use customize_exe::{BabyBearOpenVmApcAdapter, Instr, POWDR_OPCODE};
 
 // A module for our extension
 pub mod isa;
+/// Offline benchmark comparing the Rust and Lean APC optimizers (see `POWDR_APC_DUMP_DIR`).
+pub mod optimizer_timing;
 pub mod powdr_extension;
 
 /// Cached `generate → select → setup` pipeline shared by the CLI and external callers.
