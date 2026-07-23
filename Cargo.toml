@@ -25,10 +25,9 @@ members = [
 # opt-in, path-based optional dependency of `powdr-autoprecompiles`, enabled via that crate's `lean-optimizer`
 # feature. Build it explicitly with `-p powdr-autoprecompiles --features lean-optimizer`.
 #
-# sp1-benchmarks is its own workspace: its SP1 dependency pulls plonky3 `p3-field
-# 0.4.3-succinct`, which shares the `0.4` compat bucket with openvm's `0.4.1` and
-# would conflict in a single lockfile. Keeping it separate lets the two resolve
-# independently. Build/test it with `cargo test` inside `sp1-benchmarks/`.
+# sp1-benchmarks is its own workspace: its SP1 dep's plonky3 `p3-field 0.4.3-succinct`
+# shares the `0.4` bucket with openvm's `0.4.1` and can't co-resolve in one lockfile.
+# Build/test it with `cargo test` inside `sp1-benchmarks/`.
 exclude = ["riscv-runtime", "autoprecompiles-lean-ffi", "sp1-benchmarks"]
 
 [workspace.package]

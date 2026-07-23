@@ -1,13 +1,6 @@
-# Standalone workspace, decoupled from the main powdr workspace.
-#
-# sp1-benchmarks' SP1 dependency transitively pulls plonky3 `p3-field
-# 0.4.3-succinct`; openvm (a main-workspace member) pulls `p3-field 0.4.1`.
-# Both live in the `0.4` semver-compat bucket, so a single shared lockfile
-# would force them to one version and fail to resolve. A separate lockfile
-# lets each resolve independently.
-#
-# No `[patch]` is needed: the powdr dep below pins the same rev the SP1 branch
-# pins, so SP1's transitive powdr and our direct one unify into a single copy.
+# Standalone workspace: sp1-benchmarks' SP1 dep pulls plonky3 `p3-field 0.4.3-succinct`,
+# which shares the `0.4` semver bucket with openvm's `0.4.1` and can't co-resolve in one
+# lockfile, so a separate lockfile lets each resolve independently.
 [workspace]
 
 [package]
@@ -20,6 +13,8 @@ license = "MIT"
 [dependencies]
 
 [dev-dependencies]
+# rev MUST match the powdr rev the `sync-powdr-main` SP1 branch pins, so the two
+# powdr copies (this one and SP1's transitive one) unify into a single copy.
 powdr-autoprecompiles = { git = "https://github.com/powdr-labs/powdr.git", rev = "247d43704b67c921c452523110a5878d87dfe110" }
 pretty_assertions = "1.4.1"
 sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/sync-powdr-main" }
