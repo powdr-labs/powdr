@@ -17,6 +17,12 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   POWDR_OPENVM_SEGMENT_DELTA: 50000
+  # Route APC generation through the Lean apc-optimizer (linked via the
+  # `lean-optimizer` cargo feature, selected at runtime by this env var).
+  POWDR_USE_LEAN_OPTIMIZER: "1"
+  # The Lean apc-optimizer recurses deeply; give worker threads a 512 MiB stack
+  # to avoid stack overflows during APC generation.
+  RUST_MIN_STACK: "536870912"
 
 jobs:
   build_cpu:
@@ -38,6 +44,14 @@ jobs:
             target/
             Cargo.lock
           key: ${{ runner.os }}-cargo-pr-tests
+      # The Lean apc-optimizer's managed checkout (clone + ~1200 compiled
+      # mathlib objects under .lake/) lives here; cache it keyed on build.rs so a
+      # `lake build` from scratch only happens when the pinned revision changes.
+      - name: ⚡ Cache apc-optimizer (Lean) checkout
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/powdr-apc-optimizer
+          key: ${{ runner.os }}-apc-optimizer-${{ hashFiles('autoprecompiles-lean-ffi/build.rs') }}
       - name: Date of the restored cache
         run: cat target/cache-build-date.txt
         continue-on-error: true
@@ -49,6 +63,12 @@ jobs:
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
       - name: Install Rust toolchain 1.91.1 (stable)
         run: rustup toolchain install 1.91.1
+      - name: Install Lean toolchain (elan)
+        # The `lean-optimizer` feature links the Lean apc-optimizer via FFI, whose
+        # build script needs `lean`/`lake`.
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Format
@@ -63,7 +83,10 @@ jobs:
 
       - uses: taiki-e/install-action@nextest
       - name: Create tests archive (CPU)
-        run: cargo nextest archive --archive-file tests_cpu.tar.zst --cargo-profile pr-tests --workspace --no-default-features
+        # Build with `lean-optimizer` so the snapshot tests (and any other test
+        # that generates APCs) run through the Lean apc-optimizer, selected at
+        # runtime by POWDR_USE_LEAN_OPTIMIZER.
+        run: cargo nextest archive --archive-file tests_cpu.tar.zst --cargo-profile pr-tests --workspace --no-default-features --features lean-optimizer
       - name: Upload build artifacts (CPU)
         uses: actions/upload-artifact@v4
         with:
@@ -151,7 +174,10 @@ jobs:
   build_gpu:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, gpu-shared]
-    timeout-minutes: 10
+    # Bumped from 10: building the test archive with the `lean-optimizer` feature
+    # links the Lean apc-optimizer FFI, which recompiles on the first run after a
+    # rev bump (the persistent apc-optimizer checkout makes later runs fast).
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -163,6 +189,12 @@ jobs:
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt
       - name: Install Rust toolchain 1.91.1 (stable)
         run: rustup toolchain install 1.91.1
+      - name: Install Lean toolchain (elan)
+        # The `lean-optimizer` feature links the Lean apc-optimizer via FFI, whose
+        # build script needs `lean`/`lake`.
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Format
@@ -175,7 +207,9 @@ jobs:
         run: cargo build --all-targets --features cuda,metrics,aot --all --profile pr-tests --verbose
       - uses: taiki-e/install-action@nextest
       - name: Create tests archive (GPU, features=cuda)
-        run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --package powdr-openvm-riscv --features cuda
+        # Add `lean-optimizer` so GPU tests also generate APCs through the Lean
+        # apc-optimizer (selected at runtime by POWDR_USE_LEAN_OPTIMIZER).
+        run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --package powdr-openvm-riscv --features cuda,lean-optimizer
       - name: Upload build artifacts (GPU)
         uses: actions/upload-artifact@v4
         with:

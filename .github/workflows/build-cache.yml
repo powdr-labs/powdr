@@ -28,6 +28,13 @@ jobs:
       run: rustup toolchain install nightly-2025-02-14 --component rust-src
     - name: Install Rust toolchain 1.91.1 (stable, OpenVM v2 MSRV)
       run: rustup toolchain install 1.91.1
+    - name: Install Lean toolchain (elan)
+      # The `lean-optimizer` feature links the Lean apc-optimizer via FFI, whose
+      # build script needs `lean`/`lake`. Building it here warms the FFI archive
+      # into the shared PR cache so PR builds don't rebuild it from scratch.
+      run: |
+        curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+        echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
     - name: Set cargo to perform shallow clones
       run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
     - name: Format
