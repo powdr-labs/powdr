@@ -13,10 +13,18 @@ license = "MIT"
 [dependencies]
 
 [dev-dependencies]
-# rev MUST match the powdr rev the `sync-powdr-main` SP1 branch pins, so the two
-# powdr copies (this one and SP1's transitive one) unify into a single copy.
-powdr-autoprecompiles = { git = "https://github.com/powdr-labs/powdr.git", rev = "247d43704b67c921c452523110a5878d87dfe110" }
+powdr-autoprecompiles = { path = "../autoprecompiles" }
 pretty_assertions = "1.4.1"
 sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/sync-powdr-main" }
 sp1-core-machine = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/sync-powdr-main" }
 sp1-primitives = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/sync-powdr-main" }
+
+# SP1 pins powdr-* via git; redirect those to the in-repo path crates so SP1's
+# transitive powdr unifies with our path dep (one copy, no trait mismatch) and
+# sp1-benchmarks exercises the powdr in this checkout.
+[patch."https://github.com/powdr-labs/powdr.git"]
+powdr-riscv-elf = { path = "../riscv-elf" }
+powdr-number = { path = "../number" }
+powdr-autoprecompiles = { path = "../autoprecompiles" }
+powdr-expression = { path = "../expression" }
+powdr-constraint-solver = { path = "../constraint-solver" }
