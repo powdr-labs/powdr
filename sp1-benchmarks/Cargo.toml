@@ -15,9 +15,9 @@ license = "MIT"
 [dev-dependencies]
 powdr-autoprecompiles = { path = "../autoprecompiles" }
 pretty_assertions = "1.4.1"
-sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/sync-powdr-main" }
-sp1-core-machine = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/sync-powdr-main" }
-sp1-primitives = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/sync-powdr-main" }
+sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/apc-air-and-executor" }
+sp1-core-machine = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/apc-air-and-executor" }
+sp1-primitives = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/apc-air-and-executor" }
 
 # SP1 pins powdr-* via git; redirect those to the in-repo path crates so SP1's
 # transitive powdr unifies with our path dep (one copy, no trait mismatch) and
