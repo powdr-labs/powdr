@@ -127,12 +127,7 @@ jobs:
       - name: Run large tests
         run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose -E 'test(_large)' --run-ignored only --no-tests=warn
 
-  # sp1-benchmarks is a standalone workspace (excluded from the main workspace
-  # because its SP1 dependency's plonky3 shares the 0.4 semver bucket with
-  # openvm's and can't co-resolve in one lockfile). It is therefore not covered
-  # by the --workspace archive above and needs its own job. Its dependency
-  # closure (SP1 core + git-sourced powdr) is disjoint from the main workspace,
-  # so it gets its own cache key rather than sharing the main build.
+  # sp1-benchmarks is a standalone workspace (excluded so its SP1 dep's plonky3 can't clash with openvm's in a shared lockfile), so it's not in the --workspace archive above and needs its own job + cache.
   test_sp1_benchmarks:
     runs-on: warp-ubuntu-2404-x64-8x
 
