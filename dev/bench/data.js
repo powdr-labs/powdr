@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784763711165,
+  "lastUpdate": 1784849977947,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -416941,6 +416941,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 41365921711,
             "range": "± 597562037",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "247d43704b67c921c452523110a5878d87dfe110",
+          "message": "nightly: run all benchmarks through the Lean optimizer (#3797)\n\n## What\n\nTurns on the Lean4 apc-optimizer for the **whole nightly** — guest, CPU\nreth, Modal GPU, and the self-hosted GPU reth — by default, and lets CI\ntrack the optimizer's latest `main`. Ports the essential wiring from\n`leanr-nightly-run-results` (not the results data), minus the `-lean`\nsuffix/note and per-branch gating. The Lean infrastructure itself (FFI\ncrate, `lean-optimizer` feature, runtime `POWDR_USE_LEAN_OPTIMIZER`\ngate) already lives on `main`.\n\n## Changes\n\n- **`run_guest_benches.sh`**: new `POWDR_BENCH_CARGO_FEATURES` var\n(default `metrics`), threaded through build / generation-timing / prove,\nso CI selects `metrics,lean-optimizer`.\n- **`autoprecompiles-lean-ffi/build.rs`**: the apc-optimizer commit can\nbe overridden at build time via `APC_OPTIMIZER_REV` (falls back to the\nvendored default const) + matching `rerun-if-env-changed`.\n- **`nightly-tests.yml`**:\n- New `resolve_apc_optimizer_rev` job resolves apc-optimizer's latest\n`main` **once** and shares it (`APC_OPTIMIZER_REV`) with every Lean\nbuild, so all jobs + `run.txt` agree on one revision.\n- `test_apc_guest`, `test_apc_reth`, `test_apc_gpu`: Lean env +\n(`lean-optimizer` feature / openvm-eth `FEATURES` patch) + elan install.\n- publish (CPU nightly) and `test_apc_gpu` (`-gpu` nightly) both record\n`apc-optimizer: <sha>` in `run.txt`.\n\n## Modal GPU is Lean for free\n\n`test_apc_reth`'s Modal prove **replays the CPU-compiled `apc-cache`**\n(`modal_app.py` restores `apc-cache.tgz` + runs `prove-stark`, never\nregenerates). The generate-stage cache key is `stage_hash((generate,\npgo_config), guest_hash)` — optimizer-independent — so the native-built\nModal binary cache-hits the Lean blobs and proves Lean APCs. No Modal\nchanges needed.\n\n## Self-hosted GPU reth (`test_apc_gpu`)\n\nThis job generates APCs on the runner itself (`rm -rf apc-cache` →\n`prove-stark`), so unlike Modal it can't replay a cache — the\n`gpu-shared` runner now **builds the Lean FFI itself** (elan +\napc-optimizer/mathlib). The persistent self-hosted apc-optimizer cache\ndir makes that a one-time cost (first nightly slow, then cached).\n\n## Unverifiable locally (needs a real nightly run)\n\n- elan installs cleanly on the self-hosted `gpu-shared` runner, and the\ncombined **`--cuda` + `lean-optimizer`** openvm-eth build links (the two\nfeatures are orthogonal — GPU proving vs. host APC generation — but the\ncombination is untested).\n- The Modal cache-hit actually lands (guest ELF hash stable across CI\nand Modal, as the cache-upload design already assumes).\n\n## Testing done here\n\n- `autoprecompiles-lean-ffi` builds cleanly with the `build.rs` change\n(full FFI build; Lean toolchain present locally).\n- `bash -n run_guest_benches.sh` passes; workflow YAML parses and the\njob graph resolves (`resolve → {guest, reth, gpu} → publish`); exactly 3\nelan installs (guest/reth/gpu) and 2 openvm-eth FEATURES patches\n(reth/gpu).\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nCo-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-22T09:05:45Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/247d43704b67c921c452523110a5878d87dfe110"
+        },
+        "date": 1784849968280,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 16808415400,
+            "range": "± 549403340",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 41592064067,
+            "range": "± 154725575",
             "unit": "ns/iter"
           }
         ]
