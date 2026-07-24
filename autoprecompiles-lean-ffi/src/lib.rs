@@ -9,6 +9,7 @@
 //! <BusMap>}`. The output is a bare `SymbolicMachine` JSON string, or `{"error": "..."}` on a
 //! parse failure inside Lean.
 
+#[cfg(not(lean_ffi_unavailable))]
 use std::ffi::{c_char, CStr, CString};
 
 /// Which known VM to optimize for; the discriminant must match apc-optimizer's `KnownVm`
@@ -20,6 +21,7 @@ pub enum KnownVm {
     Sp1 = 1,
 }
 
+#[cfg(not(lean_ffi_unavailable))]
 extern "C" {
     fn apc_optimizer_optimize(
         vm: u8,
@@ -39,6 +41,7 @@ extern "C" {
 /// Returns the optimized `SymbolicMachine` JSON on success. Returns `Err` if the input contains
 /// interior NUL bytes, if the Lean side reports a parse error (`{"error": ...}`), or if the
 /// returned bytes are not valid UTF-8.
+#[cfg(not(lean_ffi_unavailable))]
 pub fn optimize_json(
     vm: KnownVm,
     degree_identities: u64,
@@ -76,7 +79,34 @@ pub fn optimize_json(
     Ok(out)
 }
 
-#[cfg(test)]
+/// Stub used when the crate was built without a Lean toolchain (see `build.rs`). Compiles so that
+/// `--all-features` builds succeed without elan, but panics if the optimizer is actually invoked.
+#[cfg(lean_ffi_unavailable)]
+pub fn optimize_json(
+    _vm: KnownVm,
+    _degree_identities: u64,
+    _degree_bus_interactions: u64,
+    _input: &str,
+) -> Result<String, String> {
+    panic!(
+        "powdr-autoprecompiles-lean-ffi was built without the Lean toolchain (`lean`/`lake` absent \
+         at build time), so the Lean apc-optimizer is unavailable. Install elan and rebuild to use \
+         it."
+    );
+}
+
+#[cfg(all(test, lean_ffi_unavailable))]
+mod stub_tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "built without the Lean toolchain")]
+    fn stub_optimize_json_panics_at_runtime() {
+        let _ = optimize_json(KnownVm::OpenVm, 3, 2, "{}");
+    }
+}
+
+#[cfg(all(test, not(lean_ffi_unavailable)))]
 mod tests {
     use super::*;
 

@@ -125,14 +125,24 @@ fn main() {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
-    // Preflight the required tools up front (before the slow clone below) so a missing Lean
-    // toolchain fails with an actionable message instead of a raw spawn error. `lean`/`lake` come
-    // from elan; `git` is needed to fetch the managed apc-optimizer checkout.
-    let lean_hint =
-        "Install the Lean toolchain via elan (https://github.com/leanprover/elan), which provides \
-         `lean` and `lake`.";
-    require_tool("lean", lean_hint);
-    require_tool("lake", lean_hint);
+    println!("cargo:rustc-check-cfg=cfg(lean_ffi_unavailable)");
+
+    // Without a Lean toolchain we can't build the optimizer, but we must still *compile* (e.g.
+    // `--all-features` CI on machines without elan). Emit a stub instead of the real FFI: `lib.rs`
+    // gates on `lean_ffi_unavailable` and its `optimize_json` panics only if actually invoked, so
+    // compilation succeeds and any real run without the toolchain fails loudly.
+    let have = |tool: &str| Command::new(tool).arg("--version").output().is_ok();
+    if !have("lean") || !have("lake") {
+        println!(
+            "cargo:warning=`lean`/`lake` not found on PATH; building a stub \
+             powdr-autoprecompiles-lean-ffi. The Lean apc-optimizer will panic if invoked at \
+             runtime. Install the Lean toolchain via elan (https://github.com/leanprover/elan) to \
+             build the real optimizer."
+        );
+        println!("cargo:rustc-cfg=lean_ffi_unavailable");
+        return;
+    }
+    // `git` is only needed for the managed apc-optimizer checkout below.
     require_tool("git", "Install git and re-run.");
 
     let apc_optimizer_dir = resolve_apc_optimizer_dir(&out_dir);
