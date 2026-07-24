@@ -44,7 +44,7 @@ pub struct TraceData<'a, F, D> {
 /// Rewrite a computation method's poly-id references to their dummy-trace coordinates. Panics if a
 /// reference isn't backed by the dummy trace; derived columns only reference substituted columns, so
 /// it can't happen.
-fn resolve_computation_method<F: Clone>(
+pub fn resolve_computation_method<F: Clone>(
     method: &ComputationMethod<F, AlgebraicExpression<F, AlgebraicReference>>,
     apc_poly_id_to_dummy_index: &BTreeMap<u64, DummyCoord>,
 ) -> ResolvedMethod<F> {
