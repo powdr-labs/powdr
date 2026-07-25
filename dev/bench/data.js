@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784936505605,
+  "lastUpdate": 1785022725297,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417009,6 +417009,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 38668710528,
             "range": "± 305496244",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Steve Wang",
+            "username": "qwang98",
+            "email": "qian.wang.wg24@wharton.upenn.edu"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "81f6d08a169699ccff0926a7dea079e9db7d1b79",
+          "message": "make resolve_computation_method public (#3801)\n\nNeeded for derived columns support in sp1 in\nhttps://github.com/succinctlabs/sp1/pull/2899.",
+          "timestamp": "2026-07-24T12:14:37Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/81f6d08a169699ccff0926a7dea079e9db7d1b79"
+        },
+        "date": 1785022715531,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 14578475934,
+            "range": "± 177701560",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 40556602308,
+            "range": "± 860766816",
             "unit": "ns/iter"
           }
         ]
