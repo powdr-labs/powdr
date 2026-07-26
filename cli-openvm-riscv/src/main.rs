@@ -85,12 +85,8 @@ struct GenerateApcsArgs {
 
     /// Cap on the number of APC candidates to build (and rank).
     ///
-    /// Unset = "build all eligible blocks". When `generate-apcs` runs as part
-    /// of a fused pipeline (`select-apcs`/`setup`/`execute`/`prove`) under
-    /// `--pgo instruction|none`, this defaults to `--autoprecompiles + --skip`;
-    /// set it explicitly to over-build for later selection sweeps. With
-    /// `--pgo cell` the default stays unset because Cell always builds every
-    /// eligible candidate anyway.
+    /// Unset = "build all eligible blocks"; `0` builds none. `--pgo cell`
+    /// always builds every eligible candidate regardless of this flag.
     #[arg(long)]
     apc_candidates: Option<u64>,
 
@@ -348,13 +344,11 @@ impl From<&SelectArgs> for SelectConfig {
 
 impl SelectArgs {
     /// Bundle the three values every chained stage (select / setup / execute /
-    /// prove) needs: a `GenerateConfig` with `with_select_defaults` already
-    /// applied, the matching `SelectConfig`, and the `PgoConfig` derived from
-    /// the embedded `GenerateApcsArgs`.
+    /// prove) needs: the `GenerateConfig`, the matching `SelectConfig`, and the
+    /// `PgoConfig` derived from the embedded `GenerateApcsArgs`.
     fn pipeline_inputs(&self) -> (GenerateConfig, SelectConfig, PgoConfig) {
         let select = SelectConfig::from(self);
-        let generate =
-            GenerateConfig::from(&self.generate).with_select_defaults(self.generate.pgo, select);
+        let generate = GenerateConfig::from(&self.generate);
         let pgo_config = pgo_config_from_args(&self.generate);
         (generate, select, pgo_config)
     }

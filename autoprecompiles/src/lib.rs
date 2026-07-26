@@ -136,22 +136,6 @@ impl GenerateConfig {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
         self
     }
-
-    /// Single source of truth for the `apc_candidates` default policy.
-    /// Callers should invoke this when both `generate` and `select`
-    /// configs are known.
-    pub fn with_select_defaults(mut self, pgo: pgo::PgoType, select: SelectConfig) -> Self {
-        if self.apc_candidates.is_some() {
-            return self;
-        }
-        self.apc_candidates = match pgo {
-            pgo::PgoType::Cell => (select.autoprecompiles == 0).then_some(0),
-            pgo::PgoType::Instruction | pgo::PgoType::None => {
-                Some(select.autoprecompiles + select.skip)
-            }
-        };
-        self
-    }
 }
 
 /// Inputs to the selection stage — trimming a generate-stage ranking down to

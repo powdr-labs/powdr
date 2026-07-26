@@ -107,8 +107,7 @@ impl<A: Adapter + Send + Sync, C: ApcCandidate<A> + Send + Sync> PgoAdapter for 
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
     ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        // Short-circuit when the caller signals "no candidates wanted".
-        // `apc_candidates = Some(0)` is the agreed signal for this; positive
+        // An explicit `apc_candidates = Some(0)` means "build nothing"; positive
         // caps are ignored (Cell's density ranking needs every candidate's
         // post-opt cost and a pre-build cap would degrade ranking quality).
         match generate.apc_candidates {
