@@ -9,9 +9,6 @@ env:
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 50000
-  # The Lean apc-optimizer recurses deeply; give worker threads a 512 MiB stack
-  # to avoid stack overflows during APC generation (guest, reth, and GPU jobs).
-  RUST_MIN_STACK: "536870912"
 
 jobs:
   bench:
