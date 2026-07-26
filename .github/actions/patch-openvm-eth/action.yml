@@ -9,7 +9,7 @@ runs:
       with:
         repository: powdr-labs/openvm-eth
         # Set once here — no inputs required elsewhere.
-        ref: b4204ea4e28298744088492b24062bf247cec122
+        ref: 8746acfbd251368cdbefc014079f7267c4524865
         path: openvm-eth
 
     - name: Patch openvm-eth to use local powdr
