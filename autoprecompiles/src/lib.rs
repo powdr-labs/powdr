@@ -476,6 +476,32 @@ pub fn build<A: Adapter>(
         return Err(crate::constraint_optimizer::Error::InputDumpOnly);
     }
 
+    // Inline optimizer-timing mode (`POWDR_APC_TIME_FILE`): time both the Rust and Lean optimizers on
+    // this input circuit and append the result as one JSON line, then proceed with the real
+    // optimization. Unlike the dump path, this does not bail, so it works under any PGO type.
+    #[cfg(feature = "lean-optimizer")]
+    if let Some(path) = std::env::var_os("POWDR_APC_TIME_FILE") {
+        use std::io::Write;
+        let comparison = optimizer::compare_optimizers::<_, _, _, A::MemoryBusInteraction<_>>(
+            machine.clone(),
+            vm_config.bus_interaction_handler.clone(),
+            degree_bound,
+            &vm_config.bus_map,
+            column_allocator.next_poly_id,
+        );
+        static TIMING_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = TIMING_LOCK.lock().unwrap();
+        let mut line = serde_json::to_string(&comparison).expect("serializing OptimizerComparison");
+        line.push('\n');
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .expect("opening POWDR_APC_TIME_FILE")
+            .write_all(line.as_bytes())
+            .expect("writing optimizer timing line");
+    }
+
     let (machine, column_allocator) = optimizer::optimize::<_, _, _, A::MemoryBusInteraction<_>>(
         machine,
         vm_config.bus_interaction_handler,
