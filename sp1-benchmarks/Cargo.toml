@@ -19,10 +19,10 @@ sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = 
 sp1-core-machine = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/apc-air-and-executor" }
 sp1-primitives = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/apc-air-and-executor" }
 
-# SP1 pins powdr-* via git; redirect those to the in-repo path crates so SP1's
+# SP1 pins powdr-* from crates.io; redirect those to the in-repo path crates so SP1's
 # transitive powdr unifies with our path dep (one copy, no trait mismatch) and
 # sp1-benchmarks exercises the powdr in this checkout.
-[patch."https://github.com/powdr-labs/powdr.git"]
+[patch.crates-io]
 powdr-riscv-elf = { path = "../riscv-elf" }
 powdr-number = { path = "../number" }
 powdr-autoprecompiles = { path = "../autoprecompiles" }
