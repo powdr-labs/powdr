@@ -1,3 +1,9 @@
+# Own workspace root: this crate is `exclude`d from the root workspace, but `exclude` entries are
+# path-relative to that manifest, so in a git worktree (which lives under the repo root) Cargo walks
+# past the worktree and binds this crate to the main checkout's workspace instead. An empty table
+# stops the upward search and makes `--manifest-path` work from anywhere.
+[workspace]
+
 [package]
 name = "powdr-autoprecompiles-lean-ffi"
 description = "FFI wrapper linking the Lean implementation of the apc-optimizer (a verified circuit optimizer) as a static library."
