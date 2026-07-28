@@ -3,7 +3,7 @@ name = "powdr-autoprecompiles-lean-ffi"
 description = "FFI wrapper linking the Lean implementation of the apc-optimizer (a verified circuit optimizer) as a static library."
 # NOTE: this crate is `exclude`d from the workspace (its build.rs needs a Lean toolchain +
 # APC_OPTIMIZER_DIR that CI lacks), so it cannot inherit `*.workspace = true`; fields are set explicitly.
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/powdr-labs/powdr"
