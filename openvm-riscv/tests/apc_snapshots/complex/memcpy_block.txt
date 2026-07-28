@@ -78,21 +78,21 @@ mult=is_valid, args=[b__0_3, c__0_3, 2 * a__0_4 + 2013265920 * b__0_3 + 20132659
 
 // Algebraic constraints:
 b__0_3 * (b__0_3 - 1) = 0
+diff_marker__3_1 * (diff_marker__3_1 - 1) = 0
 diff_marker__3_1 * diff_val_1 = 0
+diff_marker__2_1 * (diff_marker__2_1 - 1) = 0
 diff_marker__2_1 * diff_val_1 = 0
+diff_marker__1_1 * (diff_marker__1_1 - 1) = 0
 diff_marker__1_1 * diff_val_1 = 0
+diff_marker__0_1 * (diff_marker__0_1 - 1) = 0
 (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1 - is_valid) * ((b__0_1 - 1) * (b__0_3 + 1006632960)) = 0
 diff_marker__0_1 * ((b__0_1 - 1) * (2 * b__0_3 - 1) + diff_val_1) = 0
+(diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1 - 1) = 0
 (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1 - 1) * b__0_3 = 0
 c__0_3 * (c__0_3 - 1) = 0
 cmp_result_4 * (cmp_result_4 - 1) = 0
 (cmp_result_4 - 1) * a__0_4 = 0
 a__0_4 * a__0_4 * hcsq#diff_inv_marker__0_4 - cmp_result_4 = 0
-diff_marker__3_1 * (diff_marker__3_1 - 1) = 0
-diff_marker__2_1 * (diff_marker__2_1 - 1) = 0
-diff_marker__1_1 * (diff_marker__1_1 - 1) = 0
-diff_marker__0_1 * (diff_marker__0_1 - 1) = 0
-(diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1 - 1) = 0
 c__0_3 * (b__0_2 + b__1_2 + b__2_2 + b_msb_f_2) = 0
 seqzinv#diff_val_2 * (b__0_2 + b__1_2 + b__2_2 + b_msb_f_2) + c__0_3 - is_valid = 0
 (1 - is_valid) * (diff_marker__0_1 + diff_marker__1_1 + diff_marker__2_1 + diff_marker__3_1) = 0
