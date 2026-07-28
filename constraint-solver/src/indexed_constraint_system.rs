@@ -43,6 +43,7 @@ pub fn apply_substitutions_to_expressions<
                 .collect(),
             bus_interactions: Vec::new(),
             derived_variables: Vec::new(),
+            hints: Vec::new(),
         },
         substitutions,
     )
@@ -88,6 +89,9 @@ enum ConstraintSystemItem {
     /// A reference to a derived variable. This is only used internally to the
     /// IndexedConstraintSystem.
     DerivedVariable(usize),
+    /// A reference to a hint. Like derived variables, hints are not constraints:
+    /// they are carried and substituted but never put into the work queue.
+    Hint(usize),
 }
 
 impl ConstraintSystemItem {
@@ -97,7 +101,7 @@ impl ConstraintSystemItem {
         match self {
             ConstraintSystemItem::AlgebraicConstraint(i) => 2 * i,
             ConstraintSystemItem::BusInteraction(i) => 2 * i + 1,
-            ConstraintSystemItem::DerivedVariable(_) => panic!(),
+            ConstraintSystemItem::DerivedVariable(_) | ConstraintSystemItem::Hint(_) => panic!(),
         }
     }
 
@@ -107,13 +111,18 @@ impl ConstraintSystemItem {
         match self {
             ConstraintSystemItem::AlgebraicConstraint(index)
             | ConstraintSystemItem::BusInteraction(index)
-            | ConstraintSystemItem::DerivedVariable(index) => *index,
+            | ConstraintSystemItem::DerivedVariable(index)
+            | ConstraintSystemItem::Hint(index) => *index,
         }
     }
 
-    /// Returns true if this constraint system item is a derived variable instead of an actual constraint.
-    fn is_derived_variable(&self) -> bool {
-        matches!(self, ConstraintSystemItem::DerivedVariable(_))
+    /// Returns true if this item is an actual constraint (and can thus be put
+    /// into the work queue). Derived variables and hints are not constraints.
+    fn is_queueable(&self) -> bool {
+        matches!(
+            self,
+            ConstraintSystemItem::AlgebraicConstraint(_) | ConstraintSystemItem::BusInteraction(_)
+        )
     }
 
     /// Turns this indexed-based item into a reference to the actual constraint.
@@ -131,7 +140,7 @@ impl ConstraintSystemItem {
             ConstraintSystemItem::BusInteraction(i) => Some(ConstraintRef::BusInteraction(
                 &constraint_system.bus_interactions[i],
             )),
-            ConstraintSystemItem::DerivedVariable(_) => None,
+            ConstraintSystemItem::DerivedVariable(_) | ConstraintSystemItem::Hint(_) => None,
         }
     }
 }
@@ -278,6 +287,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
             algebraic_constraints: constraints.into_iter().collect(),
             bus_interactions: Vec::new(),
             derived_variables: Vec::new(),
+            hints: Vec::new(),
         });
     }
 
@@ -290,6 +300,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
             algebraic_constraints: Vec::new(),
             bus_interactions: bus_interactions.into_iter().collect(),
             derived_variables: Vec::new(),
+            hints: Vec::new(),
         });
     }
 
@@ -302,6 +313,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
             algebraic_constraints: Vec::new(),
             bus_interactions: Vec::new(),
             derived_variables: derived_variables.into_iter().collect(),
+            hints: Vec::new(),
         });
     }
 
@@ -310,6 +322,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
         let algebraic_constraint_count = self.constraint_system.algebraic_constraints.len();
         let bus_interactions_count = self.constraint_system.bus_interactions.len();
         let derived_variables_count = self.constraint_system.derived_variables.len();
+        let hints_count = self.constraint_system.hints.len();
         // Compute the occurrences of the variables in the new constraints,
         // but update their indices.
         // Iterating over hash map here is fine because we are just extending another hash map.
@@ -325,6 +338,7 @@ impl<T: RuntimeConstant, V: Clone + Eq + Hash> IndexedConstraintSystem<T, V> {
                 ConstraintSystemItem::DerivedVariable(i) => {
                     ConstraintSystemItem::DerivedVariable(i + derived_variables_count)
                 }
+                ConstraintSystemItem::Hint(i) => ConstraintSystemItem::Hint(i + hints_count),
             });
             self.variable_occurrences
                 .entry(variable)
@@ -455,9 +469,19 @@ fn variable_occurrences<T: RuntimeConstant, V: Hash + Eq + Clone>(
                     .map(move |v| (v.clone(), ConstraintSystemItem::DerivedVariable(i)))
             },
         );
+    let occurrences_in_hints = constraint_system
+        .hints
+        .iter()
+        .enumerate()
+        .flat_map(|(i, hint)| {
+            hint.referenced_unknown_variables()
+                .unique()
+                .map(move |v| (v.clone(), ConstraintSystemItem::Hint(i)))
+        });
     occurrences_in_algebraic_constraints
         .chain(occurrences_in_bus_interactions)
         .chain(occurrences_in_derived_variables)
+        .chain(occurrences_in_hints)
         .into_grouping_map()
         .collect()
 }
@@ -482,6 +506,10 @@ fn substitute_by_known_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord + C
         ConstraintSystemItem::DerivedVariable(i) => constraint_system.derived_variables[i]
             .computation_method
             .substitute_by_known(variable, substitution),
+        ConstraintSystemItem::Hint(i) => constraint_system.hints[i]
+            .args
+            .iter_mut()
+            .for_each(|expr| expr.substitute_by_known(variable, substitution)),
     }
 }
 
@@ -505,6 +533,10 @@ fn substitute_by_unknown_in_item<T: RuntimeConstant + Substitutable<V>, V: Ord +
         ConstraintSystemItem::DerivedVariable(i) => constraint_system.derived_variables[i]
             .computation_method
             .substitute_by_unknown(variable, substitution),
+        ConstraintSystemItem::Hint(i) => constraint_system.hints[i]
+            .args
+            .iter_mut()
+            .for_each(|expr| expr.substitute_by_unknown(variable, substitution)),
     }
 }
 
@@ -555,7 +587,7 @@ where
     pub fn variable_updated(&mut self, variable: &V) {
         if let Some(items) = self.constraint_system.variable_occurrences.get(variable) {
             for item in items {
-                if !item.is_derived_variable() {
+                if item.is_queueable() {
                     self.queue.push(*item);
                 }
             }
@@ -669,7 +701,7 @@ impl ConstraintSystemQueue {
     }
 
     fn push(&mut self, item: ConstraintSystemItem) {
-        assert!(!item.is_derived_variable());
+        assert!(item.is_queueable());
         if self.in_queue.len() <= item.flat_constraint_id() {
             self.in_queue.resize(item.flat_constraint_id() + 1, false);
         }
@@ -692,7 +724,7 @@ impl ConstraintSystemQueue {
 mod tests {
     use powdr_number::GoldilocksField;
 
-    use crate::constraint_system::ComputationMethod;
+    use crate::constraint_system::{ComputationMethod, Hint};
 
     use super::*;
 
@@ -826,6 +858,7 @@ mod tests {
         let mut system: IndexedConstraintSystem<_, _> = ConstraintSystem::<GoldilocksField, _> {
             algebraic_constraints: vec![],
             bus_interactions: vec![],
+            hints: vec![],
             derived_variables: vec![
                 DerivedVariable::new(
                     true,
@@ -858,5 +891,31 @@ mod tests {
             format!("{system}"),
             "d1 (new) := QuotientOrZero(1, x2)\nd2 (new) := QuotientOrZero(y1, 8)"
         );
+    }
+
+    #[test]
+    fn substitute_in_hints() {
+        // A hint's argument expressions must be simplified along with the rest
+        // of the system: substitutions applied to the system reach the hint args.
+        let mut system: IndexedConstraintSystem<_, _> = ConstraintSystem::<GoldilocksField, _> {
+            algebraic_constraints: vec![],
+            bus_interactions: vec![],
+            derived_variables: vec![],
+            hints: vec![Hint::new(
+                7,
+                vec![
+                    GroupedExpression::from_unknown_variable("x"),
+                    GroupedExpression::from_unknown_variable("t"),
+                ],
+            )],
+        }
+        .into();
+        system.substitute_by_unknown(
+            &"x",
+            &(GroupedExpression::from_unknown_variable("y")
+                + GroupedExpression::from_number(3.into())),
+        );
+        system.substitute_by_known(&"t", &5.into());
+        assert_eq!(format!("{system}"), "hint[7](y + 3, 5)");
     }
 }

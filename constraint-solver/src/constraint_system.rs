@@ -29,6 +29,11 @@ pub struct ConstraintSystem<T, V> {
     /// Newly added variables whose values are derived from existing variables.
     #[serde(rename = "derived_columns")]
     pub derived_variables: Vec<DerivedVariable<T, V, GroupedExpression<T, V>>>,
+    /// Opaque hints attached to the system. They impose no constraints, but
+    /// their argument expressions are kept simplified alongside the rest of the
+    /// system (the same substitutions are applied to them). The meaning of each
+    /// hint's `kind` is up to the caller.
+    pub hints: Vec<Hint<GroupedExpression<T, V>>>,
 }
 
 impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for ConstraintSystem<T, V> {
@@ -56,6 +61,9 @@ impl<T: RuntimeConstant + Display, V: Clone + Ord + Display> Display for Constra
                         )
                     }
                 ))
+                .chain(self.hints.iter().map(|Hint { kind, args }| {
+                    format!("hint[{kind}]({})", args.iter().format(", "))
+                }))
                 .format("\n")
         )
     }
@@ -83,6 +91,7 @@ impl<T: RuntimeConstant, V> ConstraintSystem<T, V> {
             .extend(system.algebraic_constraints);
         self.bus_interactions.extend(system.bus_interactions);
         self.derived_variables.extend(system.derived_variables);
+        self.hints.extend(system.hints);
     }
 }
 
@@ -389,6 +398,39 @@ impl<T, V> BusInteraction<GroupedExpression<T, V>> {
     pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         Box::new(
             self.fields()
+                .flat_map(|expr| expr.referenced_unknown_variables()),
+        )
+    }
+}
+
+/// An opaque hint attached to a constraint system.
+///
+/// A hint imposes no constraints by itself. Its `args` are expressions that are
+/// kept simplified alongside the rest of the system: every substitution applied
+/// to the constraints and bus interactions is also applied to the hint's args.
+/// The constraint solver never inspects `kind` — its meaning is entirely up to
+/// the caller that produced the hint.
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize)]
+pub struct Hint<E> {
+    /// Opaque hint kind, interpreted by the caller.
+    pub kind: u32,
+    /// Argument expressions, kept normalized alongside the constraint system.
+    pub args: Vec<E>,
+}
+
+impl<E> Hint<E> {
+    pub fn new(kind: u32, args: Vec<E>) -> Self {
+        Self { kind, args }
+    }
+}
+
+impl<T, V> Hint<GroupedExpression<T, V>> {
+    /// Returns the set of unknown variables referenced across all arguments.
+    /// Might contain repetitions.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        Box::new(
+            self.args
+                .iter()
                 .flat_map(|expr| expr.referenced_unknown_variables()),
         )
     }

@@ -99,6 +99,7 @@ impl ExportOptions {
             machine,
             AdapterOptimisticConstraints::<A>::empty(),
             column_allocator,
+            Vec::new(),
         );
         self.export_apc::<A>(&apc, suffix, bus_map);
     }
@@ -236,6 +237,7 @@ fn instructions_to_powdr_field<A: Adapter>(
         machine: apc.machine,
         subs: apc.subs,
         optimistic_constraints: apc.optimistic_constraints,
+        dropped_memory_slots: apc.dropped_memory_slots,
     }
 }
 

@@ -8,7 +8,7 @@ use crate::{
     blocks::{Instruction, SuperBlock},
     expression::AlgebraicExpression,
     powdr,
-    symbolic_machine::{SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine},
+    symbolic_machine::{MemoryDrop, SymbolicBusInteraction, SymbolicConstraint, SymbolicMachine},
     Apc, BusMap, BusType, ColumnAllocator, InstructionHandler,
 };
 
@@ -22,6 +22,7 @@ pub fn convert_apc_field_type<T, I, A, V, U>(
         machine: convert_machine_field_type(apc.machine, convert_field_element),
         subs: apc.subs,
         optimistic_constraints: apc.optimistic_constraints,
+        dropped_memory_slots: apc.dropped_memory_slots,
     }
 }
 
@@ -55,6 +56,25 @@ pub fn convert_machine_field_type<T, U>(
                 )
             })
             .collect(),
+        memory_drops: machine
+            .memory_drops
+            .into_iter()
+            .map(|drop| convert_memory_drop(drop, convert_field_element))
+            .collect(),
+    }
+}
+
+/// Converts the field type of a memory drop hint.
+fn convert_memory_drop<T, U>(
+    drop: MemoryDrop<T>,
+    convert_field_element: &impl Fn(T) -> U,
+) -> MemoryDrop<U> {
+    MemoryDrop {
+        kind: drop.kind,
+        address_space: convert_expression(drop.address_space, convert_field_element),
+        address: convert_expression(drop.address, convert_field_element),
+        timestamp: convert_expression(drop.timestamp, convert_field_element),
+        fp_offset: drop.fp_offset,
     }
 }
 
@@ -138,10 +158,14 @@ pub(crate) fn statements_to_symbolic_machine<A: Adapter>(
 ) -> (SymbolicMachine<A::PowdrField>, ColumnAllocator) {
     let (machines, column_allocator) =
         statements_to_symbolic_machines::<A>(block, instruction_handler, bus_map);
-    let machine = machines
+    // Lower the ISA's liveness hints into memory drops against the per-instruction
+    // (globalized) machines, before they are concatenated into a single machine.
+    let memory_drops = A::lower_memory_drops(instruction_handler, block, &machines, bus_map);
+    let mut machine = machines
         .into_iter()
         .reduce(SymbolicMachine::concatenate)
         .unwrap();
+    machine.memory_drops.extend(memory_drops);
     (machine, column_allocator)
 }
 

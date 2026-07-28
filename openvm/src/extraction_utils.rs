@@ -19,7 +19,7 @@ use powdr_autoprecompiles::bus_map::BusType;
 use powdr_autoprecompiles::evaluation::AirStats;
 use powdr_autoprecompiles::expression::try_convert;
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
-use powdr_autoprecompiles::{Apc, DegreeBound, InstructionHandler};
+use powdr_autoprecompiles::{Apc, DegreeBound, DropHint, InstructionHandler};
 use powdr_openvm_bus_interaction_handler::bus_map::{BusMap, OpenVmBusType};
 use serde::{Deserialize, Serialize};
 use std::iter::Sum;
@@ -45,6 +45,10 @@ pub struct OriginalAirs<F, ISA> {
     /// Maps an AIR name to its symbolic machine and metrics.
     /// Note that this map only contains AIRs that implement instructions.
     pub(crate) air_name_to_machine: BTreeMap<String, (SymbolicMachine<F>, AirMetrics)>,
+    /// Per-instruction liveness hints keyed by program counter. Empty unless the
+    /// ISA emits them; populated after construction from `ISA::get_drop_hints`.
+    #[serde(default)]
+    pub(crate) drop_hints: HashMap<u64, Vec<DropHint>>,
     _marker: PhantomData<ISA>,
 }
 
@@ -120,6 +124,7 @@ impl<F, ISA> OriginalAirs<F, ISA> {
             degree_bound,
             opcode_to_air: Default::default(),
             air_name_to_machine: Default::default(),
+            drop_hints: Default::default(),
             _marker: PhantomData,
         }
     }
@@ -299,6 +304,7 @@ impl<ISA: OpenVmISA> OriginalVmConfig<ISA> {
                                 constraints: powdr_exprs.into_iter().map(Into::into).collect(),
                                 bus_interactions: powdr_bus_interactions,
                                 derived_columns: vec![],
+                                memory_drops: vec![],
                             },
                             metrics,
                         ))

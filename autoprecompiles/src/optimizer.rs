@@ -16,7 +16,9 @@ use powdr_number::KnownField;
 use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
 use crate::export::ExportOptions;
-use crate::memory_optimizer::MemoryBusInteraction;
+use crate::memory_optimizer::{
+    drop_internal_memory_accesses, DroppedMemorySlot, MemoryBusInteraction,
+};
 use crate::range_constraint_optimizer::{optimize_range_constraints, RangeConstraintHandler};
 use crate::symbolic_machine::{
     constraint_system_to_symbolic_machine, symbolic_machine_to_constraint_system,
@@ -44,7 +46,10 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
     bus_map: &BusMap<BusTypes>,
     mut column_allocator: ColumnAllocator,
     export_options: &mut ExportOptions,
-) -> Result<(SymbolicMachine<T>, ColumnAllocator), crate::constraint_optimizer::Error>
+) -> Result<
+    (SymbolicMachine<T>, ColumnAllocator, Vec<DroppedMemorySlot>),
+    crate::constraint_optimizer::Error,
+>
 where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
@@ -69,7 +74,8 @@ where
             degree_bound,
         );
         column_allocator.next_poly_id = next_free_id;
-        return Ok((optimized, column_allocator));
+        // The Lean optimizer does not apply memory drops.
+        return Ok((optimized, column_allocator, Vec::new()));
     }
 
     let mut stats_logger = StatsLogger::start(&machine);
@@ -136,6 +142,7 @@ where
             break;
         }
     }
+
     let (constraint_system, substitutions) = inliner::replace_constrained_witness_columns(
         constraint_system,
         inline_everything_below_degree_bound(degree_bound),
@@ -143,6 +150,25 @@ where
     stats_logger.log("inlining", &constraint_system);
     export_options.register_substituted_variables(substitutions);
     export_options.export_optimizer_outer_constraint_system(constraint_system.system(), "inlining");
+
+    // Drop fully-internal memory accesses flagged by liveness hints. Runs once,
+    // after the pairing loop has reduced each live slot to a boundary pair.
+    //
+    // This must run *after* inlining: a drop is only applied when its hint
+    // refers to the slot's surviving (last) write, gated by
+    // `drop.timestamp >= set_new.timestamp`. Before inlining, each instruction
+    // still carries its own execution-timestamp witness column (only related to
+    // the others by not-yet-substituted constraints), so that difference mixes
+    // distinct columns and never reduces to a constant -- the gate then rejects
+    // almost every otherwise-valid drop. Inlining unifies the timestamp (and fp)
+    // columns to a single base, so the gate can actually be evaluated. The
+    // disconnected-column removal below prunes the orphaned read columns.
+    let (constraint_system, dropped_memory_slots) = drop_internal_memory_accesses::<_, _, MemoryBus>(
+        constraint_system.into(),
+        bus_map.get_bus_id(&BusType::Memory),
+    );
+    let constraint_system: IndexedConstraintSystem<_, _> = constraint_system.into();
+    stats_logger.log("dropping internal memory accesses", &constraint_system);
 
     let constraint_system = constraint_optimizer::remove_disconnected_columns(
         constraint_system,
@@ -220,6 +246,7 @@ where
     Ok((
         constraint_system_to_symbolic_machine(constraint_system),
         column_allocator,
+        dropped_memory_slots,
     ))
 }
 
