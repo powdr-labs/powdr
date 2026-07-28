@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785195751542,
+  "lastUpdate": 1785282104214,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417111,6 +417111,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 40596568885,
             "range": "± 286430989",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Leo",
+            "username": "leonardoalt",
+            "email": "leo@powdrlabs.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "9f84ab95cc2244731df9058cad170afdde0870ec",
+          "message": "Bump version 0.1.4 -> 0.1.5 (#3805)\n\n## Summary\n\nBumps the workspace version from 0.1.4 to 0.1.5, and fixes a\nworkspace-resolution bug that blocked publishing\n`powdr-autoprecompiles-lean-ffi` from a git worktree.\n\n## Changes\n\n- Root `Cargo.toml`: `[workspace.package] version` and all 15 `powdr-*`\nentries under `[workspace.dependencies]`.\n- `autoprecompiles-lean-ffi/Cargo.toml`: same version bump. This crate\nis `exclude`d from the workspace so it cannot inherit `version.workspace\n= true` and sets its version explicitly. Bumping only the root manifest\nwould leave the `^0.1.5` requirement on the path dependency\nunsatisfiable whenever the `lean-optimizer` feature is enabled:\n\n  ```\nerror: failed to select a version for the requirement\n`powdr-autoprecompiles-lean-ffi = \"^0.1.5\"`\n  candidate versions found which didn't match: 0.1.4\n  ```\n\nThat failure is invisible to a default build, since the dependency is\noptional.\n\n- `autoprecompiles-lean-ffi/Cargo.toml`: added an empty `[workspace]`\ntable. `exclude` entries are path-relative to the manifest declaring\nthem, so the root manifest only excludes\n`<repo>/autoprecompiles-lean-ffi`. Inside a git worktree (which lives\nunder `.claude/worktrees/` in the repo root) Cargo walked up past the\nworktree manifest and bound the crate to the main checkout's workspace,\nfailing with `current package believes it's in a workspace when it's\nnot`. That made both `cargo publish --manifest-path\nautoprecompiles-lean-ffi/Cargo.toml` and `cargo fmt --all` unusable from\nany worktree. The empty table is the fix Cargo's own diagnostic\nsuggests. The crate has no dependencies and sets every package field\nexplicitly, so it inherits nothing from the root workspace and builds\nidentically.\n\n## Testing\n\n- `cargo check --all-targets --features metrics`: passes, no warnings.\n- `cargo clippy --all --all-targets --features metrics -- -D warnings`:\npasses.\n- `cargo metadata` confirms all 14 workspace members plus\n`autoprecompiles-lean-ffi` resolve at 0.1.5, the latter via `--features\nlean-optimizer`, so the root `exclude` is still honored.\n- `cargo package --list --manifest-path\nautoprecompiles-lean-ffi/Cargo.toml` now succeeds from a worktree;\n`cargo fmt --all` does too, having previously failed there.\n- Full `nextest` suite not run locally; left to CI. No Rust code\nchanged, and there are no `CARGO_PKG_VERSION` uses or hardcoded version\nstrings in the tree.\n\n## Notes\n\nNeeded to unblock the 0.1.5 release: `powdr-autoprecompiles` declares an\noptional dependency on `powdr-autoprecompiles-lean-ffi`, and cargo\nrequires optional dependencies to exist on the registry, so lean-ffi has\nto be published before `powdr-autoprecompiles` 0.1.5 can be.\n\nThe only remaining `0.1.4` in the repo is the unrelated third-party\n`raki = \"0.1.4\"` in `riscv-elf`, left untouched.\n\n---------\n\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-07-28T08:50:05Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/9f84ab95cc2244731df9058cad170afdde0870ec"
+        },
+        "date": 1785282094324,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 20369871995,
+            "range": "± 1054884447",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 40985203053,
+            "range": "± 1465893501",
             "unit": "ns/iter"
           }
         ]
