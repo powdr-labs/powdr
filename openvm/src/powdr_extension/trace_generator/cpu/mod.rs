@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use itertools::Itertools;
 use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
@@ -6,10 +9,16 @@ use openvm_circuit_primitives::Chip;
 use openvm_stark_backend::{
     p3_field::{Field, PrimeCharacteristicRing, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
+    p3_maybe_rayon::prelude::{IntoParallelIterator, ParallelIterator},
     prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::trace_handler::{DummyCoord, ResolvedMethod, TraceTrait};
+use powdr_autoprecompiles::{
+    symbolic_machine::SymbolicBusInteraction,
+    trace_handler::{
+        resolve_computation_method, DummyCoord, OriginalRowReference, ResolvedMethod, TraceTrait,
+    },
+};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::AlgebraicExpression;
 use powdr_number::ExpressionConvertible;
@@ -31,7 +40,7 @@ pub use periphery::{
     PowdrPeripheryInstancesCpu, SharedPeripheryChipsCpu, SharedPeripheryChipsCpuProverExt,
 };
 
-/// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
+/// A wrapper around a DenseMatrix to implement `TraceTrait` for cached dummy-trace slicing.
 pub struct SharedCpuTrace<F> {
     pub matrix: Arc<RowMajorMatrix<F>>,
 }
@@ -54,6 +63,143 @@ impl<F> From<Arc<RowMajorMatrix<F>>> for SharedCpuTrace<F> {
     }
 }
 
+#[derive(Debug)]
+struct CachedInstruction {
+    air_name: String,
+    occurrence_per_call: usize,
+    table_offset: usize,
+    copy_pairs: Vec<(usize, usize)>,
+}
+
+/// Metadata derived from the APC once and reused for every witness generation.
+struct CachedApc<ISA: OpenVmISA> {
+    apc: IsaApc<BabyBear, ISA>,
+    apc_poly_id_to_index: BTreeMap<u64, usize>,
+    instructions: Vec<CachedInstruction>,
+    columns_to_compute: Vec<(usize, ResolvedMethod<BabyBear>)>,
+    bus_interactions: Vec<SymbolicBusInteraction<BabyBear>>,
+}
+
+impl<ISA: OpenVmISA> CachedApc<ISA> {
+    fn new(apc: IsaApc<BabyBear, ISA>, original_airs: &OriginalAirs<BabyBear, ISA>) -> Self {
+        let apc_poly_id_to_index = apc
+            .machine()
+            .main_columns()
+            .enumerate()
+            .map(|(index, c)| (c.id, index))
+            .collect::<BTreeMap<_, _>>();
+
+        let instructions_with_subs = apc
+            .instructions()
+            .zip_eq(apc.subs().iter())
+            .filter(|(_, subs)| !subs.is_empty())
+            .map(|(instruction, subs)| {
+                (
+                    original_airs.opcode_to_air[&instruction.inner.opcode].clone(),
+                    subs,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let air_name_occurrences = instructions_with_subs
+            .iter()
+            .map(|(air_name, _)| air_name.clone())
+            .counts();
+
+        let mut air_name_counts = HashMap::new();
+        let mut instructions = Vec::with_capacity(instructions_with_subs.len());
+        let mut apc_poly_id_to_dummy_index = BTreeMap::new();
+
+        for (instruction_index, (air_name, substitutions)) in
+            instructions_with_subs.iter().enumerate()
+        {
+            let count = air_name_counts.entry(air_name.clone()).or_default();
+            let table_offset = *count;
+            *count += 1;
+
+            let mut copy_pairs = Vec::new();
+            for substitution in substitutions.iter() {
+                apc_poly_id_to_dummy_index.insert(
+                    substitution.apc_poly_id,
+                    DummyCoord {
+                        instruction: instruction_index,
+                        index: substitution.original_poly_index,
+                    },
+                );
+
+                if let Some(apc_index) = apc_poly_id_to_index.get(&substitution.apc_poly_id) {
+                    copy_pairs.push((substitution.original_poly_index, *apc_index));
+                }
+            }
+
+            instructions.push(CachedInstruction {
+                air_name: air_name.clone(),
+                occurrence_per_call: air_name_occurrences[air_name],
+                table_offset,
+                copy_pairs,
+            });
+        }
+
+        let columns_to_compute = apc
+            .machine()
+            .derived_columns
+            .iter()
+            .filter(|d| d.is_new)
+            .map(|d| {
+                (
+                    apc_poly_id_to_index[&d.variable.id],
+                    resolve_computation_method(&d.computation_method, &apc_poly_id_to_dummy_index),
+                )
+            })
+            .collect();
+
+        let bus_interactions = apc.machine().bus_interactions.clone();
+
+        Self {
+            apc,
+            apc_poly_id_to_index,
+            instructions,
+            columns_to_compute,
+            bus_interactions,
+        }
+    }
+
+    fn width(&self) -> usize {
+        self.apc_poly_id_to_index.len()
+    }
+
+    fn dummy_values<'a, M>(
+        &self,
+        air_name_to_dummy_trace: &'a HashMap<String, M>,
+        apc_call_count: usize,
+    ) -> Vec<Vec<OriginalRowReference<'a, M::Values>>>
+    where
+        M: TraceTrait<BabyBear>,
+    {
+        (0..apc_call_count)
+            .into_par_iter()
+            .map(|trace_row| {
+                self.instructions
+                    .iter()
+                    .map(|instruction| {
+                        let trace = air_name_to_dummy_trace.get(&instruction.air_name).unwrap();
+                        let width = trace.width();
+                        let start = (trace_row * instruction.occurrence_per_call
+                            + instruction.table_offset)
+                            * width;
+
+                        OriginalRowReference {
+                            data: trace.values(),
+                            start,
+                            length: width,
+                        }
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+}
+
 impl<R, PB: ProverBackend<Matrix = RowMajorMatrix<BabyBear>>, ISA: OpenVmISA> Chip<R, PB>
     for PowdrChipCpu<ISA>
 {
@@ -69,8 +215,7 @@ impl<R, PB: ProverBackend<Matrix = RowMajorMatrix<BabyBear>>, ISA: OpenVmISA> Ch
 }
 
 pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
-    pub apc: IsaApc<BabyBear, ISA>,
-    pub original_airs: OriginalAirs<BabyBear, ISA>,
+    cached_apc: Arc<CachedApc<ISA>>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesCpu<ISA>,
 }
@@ -82,21 +227,24 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
+        let cached_apc = Arc::new(CachedApc::new(apc, &original_airs));
+
         Self {
-            apc,
-            original_airs,
+            cached_apc,
             config,
             periphery,
         }
+    }
+
+    pub fn apc(&self) -> &IsaApc<BabyBear, ISA> {
+        &self.cached_apc.apc
     }
 
     pub fn generate_witness(
         &self,
         original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
     ) -> DenseMatrix<BabyBear> {
-        use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
-
-        let width = self.apc.machine().main_columns().count();
+        let width = self.cached_apc.width();
 
         let mut original_arenas = match original_arenas {
             OriginalArenas::Initialized(arenas) => arenas,
@@ -142,20 +290,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             })
             .collect();
 
-        let TraceData {
-            dummy_values,
-            dummy_trace_index_to_apc_index_by_instruction,
-            apc_poly_id_to_index,
-            columns_to_compute,
-        } = generate_trace(
-            &dummy_trace_by_air_name,
-            &self.original_airs,
-            num_apc_calls,
-            &self.apc,
-        );
+        let dummy_values = self
+            .cached_apc
+            .dummy_values(&dummy_trace_by_air_name, num_apc_calls);
 
         // allocate for apc trace
-        let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
@@ -176,26 +315,25 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     .map(|r| &r.data[r.start..r.start + r.length])
                     .collect();
 
-                for (&dummy_row, dummy_trace_index_to_apc_index) in dummy_rows
-                    .iter()
-                    .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
+                for (&dummy_row, instruction) in
+                    dummy_rows.iter().zip_eq(&self.cached_apc.instructions)
                 {
-                    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
+                    for (dummy_trace_index, apc_index) in &instruction.copy_pairs {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
                 }
 
                 // Fill the computed columns (e.g. `is_valid`), each pre-resolved to its APC row
                 // index and a method reading its inputs from the dummy trace.
-                for (target_index, method) in &columns_to_compute {
+                for (target_index, method) in &self.cached_apc.columns_to_compute {
                     row_slice[*target_index] = evaluate_computation_method(method, &dummy_rows);
                 }
 
-                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
+                let evaluator =
+                    MappingRowEvaluator::new(row_slice, &self.cached_apc.apc_poly_id_to_index);
 
                 // replay the side effects of this row on the main periphery
-                self.apc
-                    .machine()
+                self.cached_apc
                     .bus_interactions
                     .iter()
                     .for_each(|interaction| {
