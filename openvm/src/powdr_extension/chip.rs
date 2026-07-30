@@ -3,7 +3,7 @@
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use crate::{
-    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    extraction_utils::OriginalVmConfig,
     isa::OpenVmISA,
     powdr_extension::{
         executor::OriginalArenas,
@@ -38,7 +38,6 @@ pub struct PowdrChipCpu<ISA: OpenVmISA> {
 impl<ISA: OpenVmISA> PowdrChipCpu<ISA> {
     pub(crate) fn new(
         precompile: PowdrPrecompile<BabyBear, ISA>,
-        original_airs: OriginalAirs<BabyBear, ISA>,
         base_config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
@@ -48,8 +47,7 @@ impl<ISA: OpenVmISA> PowdrChipCpu<ISA> {
             apc_record_arena_cpu: apc_record_arena,
             ..
         } = precompile;
-        let trace_generator =
-            PowdrTraceGeneratorCpu::new(apc, original_airs, base_config, periphery);
+        let trace_generator = PowdrTraceGeneratorCpu::new(apc, base_config, periphery);
 
         Self {
             name,
@@ -168,7 +166,7 @@ mod cuda {
                 ..
             } = precompile;
             let trace_generator =
-                PowdrTraceGeneratorGpu::new(apc, original_airs, base_config, periphery);
+                PowdrTraceGeneratorGpu::new(apc.apc.clone(), original_airs, base_config, periphery);
 
             Self {
                 name,

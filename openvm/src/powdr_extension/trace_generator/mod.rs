@@ -1,3 +1,4 @@
+pub(crate) mod cache;
 pub mod cpu;
 #[cfg(feature = "cuda")]
 pub mod cuda;

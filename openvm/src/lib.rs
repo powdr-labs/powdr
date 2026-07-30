@@ -325,7 +325,6 @@ where
             inventory.next_air::<PowdrAir<BabyBear>>()?;
             let chip = PowdrChipCpu::new(
                 precompile.clone(),
-                extension.airs.clone(),
                 extension.base_config.clone(),
                 shared_chips_pair.clone(),
             );
@@ -449,7 +448,17 @@ impl<ISA: OpenVmISA> SpecializedConfig<ISA> {
         precompiles: Vec<PowdrPrecompile<BabyBear, ISA>>,
         degree_bound: DegreeBound,
     ) -> Self {
-        let airs = base_config.airs(degree_bound).expect("Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!");
+        let airs = base_config.airs(degree_bound).expect(
+            "Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!",
+        );
+        Self::new_with_airs(base_config, precompiles, airs)
+    }
+
+    pub fn new_with_airs(
+        base_config: OriginalVmConfig<ISA>,
+        precompiles: Vec<PowdrPrecompile<BabyBear, ISA>>,
+        airs: crate::extraction_utils::OriginalAirs<BabyBear, ISA>,
+    ) -> Self {
         let bus_map = base_config.bus_map();
         let powdr_extension = PowdrExtension::new(precompiles, base_config.clone(), bus_map, airs);
         Self {
