@@ -38,6 +38,7 @@ extern "C" {
         // APC related
         d_output: *const BabyBear, // APC trace buffer (column-major), device pointer
         num_apc_calls: i32,        // number of APC calls (rows to process)
+        output_height: usize,      // output height
 
         // Interaction related
         d_bytecode: *const u32, // device bytecode buffer for stack-machine expressions
@@ -96,7 +97,7 @@ pub struct Subst {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct DerivedExprSpec {
-    /// Precomputed destination APC column base = (apc_col_index * H)
+    /// Destination APC column index (kernel scales by height H)
     pub col_base: u64,
     /// Expression span inside the shared bytecode buffer
     pub span: ExprSpan,
@@ -212,6 +213,7 @@ pub fn apc_apply_bus(
             // APC related
             output.buffer().as_ptr(),
             num_apc_calls as i32,
+            output.height(),
             // Interaction related
             bytecode.as_ptr(),
             bytecode.len(),

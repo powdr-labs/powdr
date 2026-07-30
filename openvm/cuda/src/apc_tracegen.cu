@@ -20,7 +20,7 @@ struct Subst {
 
 extern "C" {
   typedef struct {
-    uint64_t col_base; // precomputed destination base offset = apc_col_index * H
+    uint64_t col_base; // destination APC column index (kernel scales by height H)
     ExprSpan span;   // expression span encoding this column's value
   } DerivedExprSpec;
 }
@@ -85,15 +85,14 @@ __global__ void apc_apply_derived_expr_kernel(
             // columns resolve without being staged in the APC buffer.
             for (size_t i = 0; i < n_cols; ++i) {
                 const DerivedExprSpec spec = d_specs[i];
-                const size_t col_base = (size_t)spec.col_base;
-                const Fp v = eval_arg(spec.span, d_bytecode, d_output, r, d_original_airs);
-                d_output[col_base + r] = v;
+                const size_t dst = (size_t)spec.col_base * H + r;
+                const Fp v = eval_arg(spec.span, d_bytecode, d_output, r, H, d_original_airs);
+                d_output[dst] = v;
             }
         } else {
             // Zero-fill non-APC rows
             for (size_t i = 0; i < n_cols; ++i) {
-                const size_t col_base = (size_t)d_specs[i].col_base;
-                d_output[col_base + r] = Fp(0);
+                d_output[(size_t)d_specs[i].col_base * H + r] = Fp(0);
             }
         }
     }

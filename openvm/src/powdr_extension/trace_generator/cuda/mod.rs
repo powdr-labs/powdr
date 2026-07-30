@@ -149,7 +149,6 @@ fn compile_derived_to_gpu(
     >],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
     cell_by_id: &BTreeMap<u64, Cell>,
-    apc_height: usize,
 ) -> (Vec<DerivedExprSpec>, Vec<u32>) {
     let emit_ref = |bc: &mut Vec<u32>, id: u64| {
         let cell = &cell_by_id[&id];
@@ -176,7 +175,7 @@ fn compile_derived_to_gpu(
         emit_method(&mut bytecode, off, computation_method, &emit_ref);
         let len = (bytecode.len() - off) as u32;
         specs.push(DerivedExprSpec {
-            col_base: (apc_col_index * apc_height) as u64,
+            col_base: apc_col_index as u64,
             span: ExprSpan {
                 off: off as u32,
                 len,
@@ -190,18 +189,16 @@ fn compile_derived_to_gpu(
 pub fn compile_bus_to_gpu(
     bus_interactions: &[SymbolicBusInteraction<BabyBear>],
     apc_poly_id_to_index: &BTreeMap<u64, usize>,
-    apc_height: usize,
 ) -> (Vec<DevInteraction>, Vec<ExprSpan>, Vec<u32>) {
     let mut interactions = Vec::with_capacity(bus_interactions.len());
     let mut arg_spans = Vec::new();
     let mut bytecode = Vec::new();
 
-    // Bus interactions only reference surviving (committed) APC columns, read from the APC buffer
-    // via `PushApc` at column-major offset `apc_col_index * apc_height`.
+    // Bus interactions reference committed APC columns via `PushApc` by column index
+    // (the kernel scales by height).
     let emit_ref = |bc: &mut Vec<u32>, id: u64| {
-        let idx = (apc_poly_id_to_index[&id] * apc_height) as u32;
         bc.push(OpCode::PushApc as u32);
-        bc.push(idx);
+        bc.push(apc_poly_id_to_index[&id] as u32);
     };
 
     for bus_interaction in bus_interactions {
@@ -404,7 +401,6 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             &self.apc.machine.derived_columns,
             &apc_poly_id_to_index,
             &cell_by_id,
-            height,
         );
         // In practice `d_specs` is never empty, because we will always have `is_valid`
         let d_specs = derived_specs.to_device().unwrap();
@@ -412,11 +408,8 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         cuda_abi::apc_apply_derived_expr(&mut output, d_specs, d_bc, &airs, num_apc_calls).unwrap();
 
         // Encode bus interactions for GPU consumption
-        let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-            &self.apc.machine.bus_interactions,
-            &apc_poly_id_to_index,
-            height,
-        );
+        let (bus_interactions, arg_spans, bytecode) =
+            compile_bus_to_gpu(&self.apc.machine.bus_interactions, &apc_poly_id_to_index);
         let bus_interactions = bus_interactions.to_device().unwrap();
         let arg_spans = arg_spans.to_device().unwrap();
         let bytecode = bytecode.to_device().unwrap();

@@ -10,7 +10,7 @@
 // `inv`, and any required primitives.
 
 enum OpCode : uint32_t {
-  OP_PUSH_APC = 0, // Push the APC value onto the stack. Must be followed by the index of the value in the APC device buffer.
+  OP_PUSH_APC = 0, // Push an APC value; followed by its column index (kernel scales by height H).
   OP_PUSH_CONST = 1, // Push a constant value onto the stack. Must be followed by the constant value.
   OP_ADD = 2, // Add the top two values on the stack.
   OP_SUB = 3, // Subtract the top two values on the stack.
@@ -48,7 +48,7 @@ __device__ __forceinline__ Fp stack_pop(Fp* stack, int& sp) {
 // `airs` is only required when the bytecode contains `OP_PUSH_DUMMY` (derived-column evaluation); the bus
 // evaluator never emits it and passes `nullptr`.
 __device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
-                                        const Fp* __restrict__ apc_trace, size_t r,
+                                        const Fp* __restrict__ apc_trace, size_t r, size_t H,
                                         const OriginalAir* __restrict__ airs = nullptr) {
   Fp stack[STACK_CAPACITY];
   int sp = 0;
@@ -56,8 +56,8 @@ __device__ __forceinline__ Fp eval_expr(const uint32_t* expr, uint32_t len,
     const uint32_t op = expr[ip++];
     switch (op) {
       case OP_PUSH_APC: {
-        const uint32_t base = expr[ip++];
-        stack_push(stack, sp, apc_trace[base + r]);
+        const uint32_t col = expr[ip++];
+        stack_push(stack, sp, apc_trace[(size_t)col * H + r]);
         break;
       }
       case OP_PUSH_CONST: {
@@ -137,8 +137,9 @@ __device__ __forceinline__ Fp eval_arg(
   const uint32_t* __restrict__ d_bytecode,
   const Fp* __restrict__ apc_trace,
   size_t r,
+  size_t H,
   const OriginalAir* __restrict__ airs = nullptr
 ) {
-  return eval_expr(d_bytecode + span.off, span.len, apc_trace, r, airs);
+  return eval_expr(d_bytecode + span.off, span.len, apc_trace, r, H, airs);
 }
 

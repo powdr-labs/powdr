@@ -24,6 +24,7 @@ __global__ void apc_apply_bus_kernel(
   // APC related
   const Fp* __restrict__ d_output, // APC trace (column-major)
   int num_apc_calls, // number of APC calls (rows)
+  size_t H, // output height; scales PushApc column indices
 
   // Interaction related
   const uint32_t* __restrict__ d_bytecode, // bytecode for stack-machine expressions
@@ -56,7 +57,7 @@ __global__ void apc_apply_bus_kernel(
     DevInteraction intr = d_interactions[i];
 
     ExprSpan mult_span = d_arg_spans[intr.args_index_off + 0];
-    Fp mult = eval_arg(mult_span, d_bytecode, d_output, (size_t)r);
+    Fp mult = eval_arg(mult_span, d_bytecode, d_output, (size_t)r, H);
     uint32_t m = mult.asUInt32();
     if (m == 0u) continue;
     // Evaluate args and apply based on bus id
@@ -64,8 +65,8 @@ __global__ void apc_apply_bus_kernel(
       // expect [value, max_bits]
       ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
       ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
-      Fp v_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r);
-      Fp b_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r);
+      Fp v_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r, H);
+      Fp b_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r, H);
 
       // histogram `num_bins` and index calculation depend on the `VariableRangeCheckerChipGPU` implementation
       uint32_t value = v_fp.asUInt32();
@@ -79,8 +80,8 @@ __global__ void apc_apply_bus_kernel(
       // expect [v0, v1]
       ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
       ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
-      Fp v0_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r);
-      Fp v1_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r);
+      Fp v0_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r, H);
+      Fp v1_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r, H);
 
       // histogram `num_bins` and index calculation depend on the `RangeTupleCheckerChipGpu<2>` implementation
       uint32_t v0 = v0_fp.asUInt32();
@@ -94,9 +95,9 @@ __global__ void apc_apply_bus_kernel(
       ExprSpan s0 = d_arg_spans[intr.args_index_off + 1];
       ExprSpan s1 = d_arg_spans[intr.args_index_off + 2];
       ExprSpan s3 = d_arg_spans[intr.args_index_off + 4];
-      Fp x_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r);
-      Fp y_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r);
-      Fp sel_fp = eval_arg(s3, d_bytecode, d_output, (size_t)r);
+      Fp x_fp = eval_arg(s0, d_bytecode, d_output, (size_t)r, H);
+      Fp y_fp = eval_arg(s1, d_bytecode, d_output, (size_t)r, H);
+      Fp sel_fp = eval_arg(s3, d_bytecode, d_output, (size_t)r, H);
 
       uint32_t x = x_fp.asUInt32();
       uint32_t y = y_fp.asUInt32();
@@ -120,6 +121,7 @@ extern "C" int _apc_apply_bus(
   // APC related
   const Fp* d_output, // APC trace (column-major), device pointer
   int num_apc_calls, // number of APC calls (rows)
+  size_t H, // output height
 
   // Interaction related
   const uint32_t* d_bytecode, // bytecode buffer (device)
@@ -151,7 +153,7 @@ extern "C" int _apc_apply_bus(
   const dim3 grid(g, 1, 1);
   apc_apply_bus_kernel<<<grid, block>>>(
     // APC related
-    d_output, num_apc_calls,
+    d_output, num_apc_calls, H,
 
     // Interaction related
     d_bytecode, bytecode_len, d_interactions, n_interactions, d_arg_spans, n_arg_spans,
