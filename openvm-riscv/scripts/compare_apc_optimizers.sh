@@ -12,16 +12,20 @@
 #   is produced per benchmark.
 #
 #   Phase 2 (time): `time-optimizers` reads every dumped circuit across all
-#   benchmarks and, in a single global rayon pool, re-runs BOTH optimizers on
-#   each one, recording the input circuit's size (variables / constraints / bus
-#   interactions) and each optimizer's runtime. Timing all benchmarks together
-#   keeps cores busy: the few large circuits that dominate any one benchmark run
+#   benchmarks and re-runs BOTH optimizers on each one, recording the input
+#   circuit's size (variables / constraints / bus interactions) and each
+#   optimizer's runtime. It makes one global rayon pass per optimizer (so only
+#   one kind of work is ever in flight), then re-times the `--isolate-top`
+#   costliest circuits serially, alone on the machine. Only those `isolated`
+#   runtimes are comparable across optimizer versions; see the module docs in
+#   `openvm/src/optimizer_timing.rs`. Timing all benchmarks in one pass keeps
+#   cores busy: the few large circuits that dominate any one benchmark run
 #   alongside the many small circuits of the others.
 #
 # The result is a JSON report:
-#   {"openvm-eth-version": "<hash>", "benchmarks": [
+#   {"openvm-eth-version": "<hash>", "parallelism": <threads>, "benchmarks": [
 #       {"name": ..., "apcs": [{"constraints", "variables", "bus_interactions",
-#                               "rust_runtime", "lean_runtime"}, ...]}]}
+#                               "rust_runtime", "lean_runtime", "isolated"}, ...]}]}
 #
 # Prerequisites (same as the nightly `test_apc_guest` / `test_apc_reth` jobs):
 #   * `cargo openvm` + the OpenVM guest toolchain installed.

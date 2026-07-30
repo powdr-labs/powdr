@@ -239,50 +239,69 @@ where
     ))
 }
 
-/// The runtime (in seconds) of both optimizers on a single input circuit, plus the input's size.
+/// The size of an input circuit: what the optimizer-timing benchmark keys its runtimes on.
 #[cfg(feature = "lean-optimizer")]
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct OptimizerComparison {
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct CircuitSize {
     pub variables: usize,
     pub constraints: usize,
     pub bus_interactions: usize,
-    pub rust_runtime: f64,
-    pub lean_runtime: f64,
 }
 
-/// Run *both* the Rust and Lean optimizers on the same input circuit and return each one's runtime
-/// alongside the input circuit's size. Used to benchmark the two optimizers against each other; the
-/// optimized machines themselves are discarded.
 #[cfg(feature = "lean-optimizer")]
-pub fn compare_optimizers<T, B, BusTypes, MemoryBus>(
+impl CircuitSize {
+    pub fn of<T: FieldElement>(machine: &SymbolicMachine<T>) -> Self {
+        use crate::powdr::UniqueReferences;
+        Self {
+            variables: machine.unique_references().count(),
+            constraints: machine.constraints.len(),
+            bus_interactions: machine.bus_interactions.len(),
+        }
+    }
+}
+
+/// Time the Lean optimizer on one input circuit, in seconds; the optimized machine is discarded.
+///
+/// Timed on its own rather than back-to-back with [`time_rust_optimizer`] so that a benchmark
+/// running many circuits concurrently keeps one *kind* of work in flight: interleaving both
+/// optimizers in a shared pool makes each one's measured wall time depend on how much of the other
+/// happens to be co-scheduled, which shifts as their relative speed changes and so is not
+/// comparable across optimizer versions.
+#[cfg(feature = "lean-optimizer")]
+pub fn time_lean_optimizer<T, BusTypes>(
+    machine: &SymbolicMachine<T>,
+    degree_bound: DegreeBound,
+    bus_map: &BusMap<BusTypes>,
+    next_free_id: u64,
+) -> f64
+where
+    T: FieldElement,
+    BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
+{
+    let start = std::time::Instant::now();
+    let _ = lean::optimize(machine, bus_map, next_free_id, degree_bound);
+    start.elapsed().as_secs_f64()
+}
+
+/// Time the Rust optimizer on one input circuit, in seconds; the optimized machine is discarded.
+/// Export is disabled. See [`time_lean_optimizer`] on why the two are timed separately.
+#[cfg(feature = "lean-optimizer")]
+pub fn time_rust_optimizer<T, B, BusTypes, MemoryBus>(
     machine: SymbolicMachine<T>,
     bus_interaction_handler: B,
     degree_bound: DegreeBound,
     bus_map: &BusMap<BusTypes>,
     next_free_id: u64,
-) -> OptimizerComparison
+) -> f64
 where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
     BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
-    use crate::powdr::UniqueReferences;
-    use std::time::Instant;
-
-    let variables = machine.unique_references().count();
-    let constraints = machine.constraints.len();
-    let bus_interactions = machine.bus_interactions.len();
-
-    // Time the Lean optimizer (operates on a borrow of the input).
-    let lean_start = Instant::now();
-    let _ = lean::optimize(&machine, bus_map, next_free_id, degree_bound);
-    let lean_runtime = lean_start.elapsed().as_secs_f64();
-
-    // Time the Rust optimizer on the identical input. Export is disabled.
     let mut export_options = ExportOptions::default();
     let column_allocator = ColumnAllocator::with_next_poly_id(next_free_id);
-    let rust_start = Instant::now();
+    let start = std::time::Instant::now();
     optimize_rust::<T, B, BusTypes, MemoryBus>(
         machine,
         bus_interaction_handler,
@@ -291,16 +310,8 @@ where
         column_allocator,
         &mut export_options,
     )
-    .expect("Rust optimizer failed during comparison");
-    let rust_runtime = rust_start.elapsed().as_secs_f64();
-
-    OptimizerComparison {
-        variables,
-        constraints,
-        bus_interactions,
-        rust_runtime,
-        lean_runtime,
-    }
+    .expect("Rust optimizer failed during timing");
+    start.elapsed().as_secs_f64()
 }
 
 pub fn optimize_exec_bus<T: FieldElement>(

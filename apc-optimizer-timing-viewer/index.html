@@ -162,6 +162,9 @@ const COLUMNS = [
   { key: "powdr",     label: "powdr (s)", type: "num", get: d => d.powdr, fmt: v => v.toFixed(3) },
   { key: "factor",    label: "lean / powdr", type: "num", get: d => d.factor,
     fmt: v => (v == null || !isFinite(v)) ? "—" : v.toFixed(2) + "×" },
+  // "isolated" rows were re-timed alone on the machine and are comparable across optimizer
+  // versions; "loaded" ones were measured with the whole pool busy (see `parallelism`).
+  { key: "isolated",  label: "Timing", type: "str", get: d => d.isolated ? "isolated" : "loaded" },
 ];
 
 let sortState = { key: "factor", dir: -1 }; // dir: 1 asc, -1 desc
@@ -180,7 +183,7 @@ function buildPoints(json) {
       pts.push({
         id: pts.length, benchmark: name, index: i,
         variables: +a.variables, constraints: +a.constraints, bus_interactions: +a.bus_interactions,
-        powdr, lean, factor,
+        powdr, lean, factor, isolated: !!a.isolated,
       });
     });
   }
@@ -200,6 +203,8 @@ function renderMeta(json) {
   const n = POINTS.length;
   const nb = (json.benchmarks || []).length;
   parts.push(`${n.toLocaleString()} APCs · ${nb} benchmarks`);
+  const isolated = POINTS.filter(p => p.isolated).length;
+  if (json.parallelism) parts.push(`${json.parallelism} threads, ${isolated} isolated`);
   if (json["openvm-eth-version"]) parts.push(`openvm-eth ${short(json["openvm-eth-version"])}`);
   if (json["apc-optimizer-version"]) parts.push(`apc-optimizer ${short(json["apc-optimizer-version"])}`);
   if (json["powdr-version"]) parts.push(`powdr ${short(json["powdr-version"])}`);
