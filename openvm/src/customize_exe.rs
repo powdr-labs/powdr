@@ -367,7 +367,7 @@ pub fn setup<'a, ISA: OpenVmISA>(
 
     CompiledProgram {
         exe: Arc::new(exe),
-        vm_config: SpecializedConfig::new_with_airs(original_config, extensions, airs),
+        vm_config: SpecializedConfig::new(original_config, extensions, airs),
     }
 }
 

@@ -50,9 +50,12 @@ impl<'a, ISA: OpenVmISA> OriginalCompiledProgram<'a, ISA> {
 
     /// Converts to a `CompiledProgram` with the original vm config (without autoprecompiles).
     pub fn compiled_program(&self, degree_bound: DegreeBound) -> CompiledProgram<ISA> {
+        let airs = self.vm_config.airs(degree_bound).expect(
+            "Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!",
+        );
         CompiledProgram {
             exe: self.exe.clone(),
-            vm_config: SpecializedConfig::new(self.vm_config.clone(), Vec::new(), degree_bound),
+            vm_config: SpecializedConfig::new(self.vm_config.clone(), Vec::new(), airs),
         }
     }
 }
