@@ -135,12 +135,16 @@ report = {
     "openvm-eth-version": openvm_eth,
     "powdr-version": powdr,
     "apc-optimizer-version": apc_opt,
+    # Carries the measurement conditions through: how many threads the loaded runtimes were
+    # measured under (the per-circuit `isolated` flags live in `benchmarks`).
+    "parallelism": data.get("parallelism"),
     "benchmarks": data["benchmarks"],
 }
 with open(out_path, "w") as f:
     json.dump(report, f, indent=2)
 n = sum(len(b["apcs"]) for b in report["benchmarks"])
-print(f"  {len(report['benchmarks'])} benchmarks, {n} circuits -> {out_path}")
+isolated = sum(a.get("isolated", False) for b in report["benchmarks"] for a in b["apcs"])
+print(f"  {len(report['benchmarks'])} benchmarks, {n} circuits ({isolated} isolated) -> {out_path}")
 PY
 
 echo "==== done ===="
