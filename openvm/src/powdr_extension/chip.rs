@@ -44,10 +44,11 @@ impl<ISA: OpenVmISA> PowdrChipCpu<ISA> {
         let PowdrPrecompile {
             name,
             apc,
+            apc_cpu,
             apc_record_arena_cpu: apc_record_arena,
             ..
         } = precompile;
-        let trace_generator = PowdrTraceGeneratorCpu::new(apc, base_config, periphery);
+        let trace_generator = PowdrTraceGeneratorCpu::new(apc, apc_cpu, base_config, periphery);
 
         Self {
             name,
@@ -137,7 +138,7 @@ mod cuda {
     use openvm_stark_sdk::p3_baby_bear::BabyBear;
 
     use crate::{
-        extraction_utils::{OriginalAirs, OriginalVmConfig},
+        extraction_utils::OriginalVmConfig,
         isa::OpenVmISA,
         powdr_extension::{
             executor::OriginalArenas,
@@ -155,18 +156,17 @@ mod cuda {
     impl<ISA: OpenVmISA> PowdrChipGpu<ISA> {
         pub(crate) fn new(
             precompile: PowdrPrecompile<BabyBear, ISA>,
-            original_airs: OriginalAirs<BabyBear, ISA>,
             base_config: OriginalVmConfig<ISA>,
             periphery: PowdrPeripheryInstancesGpu<ISA>,
         ) -> Self {
             let PowdrPrecompile {
                 name,
                 apc,
+                apc_gpu,
                 apc_record_arena_gpu: apc_record_arena,
                 ..
             } = precompile;
-            let trace_generator =
-                PowdrTraceGeneratorGpu::new(apc.apc.clone(), original_airs, base_config, periphery);
+            let trace_generator = PowdrTraceGeneratorGpu::new(apc, apc_gpu, base_config, periphery);
 
             Self {
                 name,

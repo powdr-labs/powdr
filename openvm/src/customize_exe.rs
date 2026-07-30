@@ -32,7 +32,7 @@ use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
 
-use crate::powdr_extension::trace_generator::cache::CachedApc;
+use crate::powdr_extension::trace_generator::cache::{CachedApc, CachedApcCpu, CachedApcGpu};
 use crate::powdr_extension::{PowdrOpcode, PowdrPrecompile};
 
 pub use powdr_openvm_bus_interaction_handler::{
@@ -353,6 +353,8 @@ pub fn setup<'a, ISA: OpenVmISA>(
             // This is only for witgen: the program in the program chip is left unchanged.
             program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
             let apc = CachedApc::new(apc, &airs.opcode_to_air);
+            let apc_cpu = CachedApcCpu::new(&apc);
+            let apc_gpu = CachedApcGpu::new(&apc);
 
             PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{}", start_pc),
@@ -360,6 +362,8 @@ pub fn setup<'a, ISA: OpenVmISA>(
                     class_offset: opcode,
                 },
                 apc,
+                apc_cpu,
+                apc_gpu,
                 apc_stats,
             )
         })

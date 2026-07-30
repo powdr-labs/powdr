@@ -22,9 +22,13 @@ use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 
 use crate::{
     cuda_abi::{self, Cell, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
-    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    extraction_utils::OriginalVmConfig,
     isa::{IsaApc, OpenVmISA},
-    powdr_extension::{chip::PowdrChipGpu, executor::OriginalArenas},
+    powdr_extension::{
+        chip::PowdrChipGpu,
+        executor::OriginalArenas,
+        trace_generator::cache::{CachedApc, CachedApcGpu},
+    },
     BabyBearSC, GpuBackend,
 };
 
@@ -227,22 +231,22 @@ pub fn compile_bus_to_gpu(
 }
 
 pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
-    pub apc: IsaApc<BabyBear, ISA>,
-    pub original_airs: OriginalAirs<BabyBear, ISA>,
+    pub apc: CachedApc<BabyBear, ISA>,
+    pub apc_gpu: CachedApcGpu,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesGpu<ISA>,
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
     pub fn new(
-        apc: IsaApc<BabyBear, ISA>,
-        original_airs: OriginalAirs<BabyBear, ISA>,
+        apc: CachedApc<BabyBear, ISA>,
+        apc_gpu: CachedApcGpu,
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesGpu<ISA>,
     ) -> Self {
         Self {
             apc,
-            original_airs,
+            apc_gpu,
             config,
             periphery,
         }
@@ -303,13 +307,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
             .collect();
 
         // Map from apc poly id to its index in the final apc trace
-        let apc_poly_id_to_index: BTreeMap<u64, usize> = self
-            .apc
-            .machine
-            .main_columns()
-            .enumerate()
-            .map(|(index, c)| (c.id, index))
-            .collect();
+        let apc_poly_id_to_index = &self.apc.apc_poly_id_to_index;
 
         // allocate for apc trace (zero-initialized so columns not covered
         // by substitutions or derived expressions default to zero, matching the CPU path).
@@ -326,58 +324,36 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // the surviving subset that actually gets staged into the committed buffer.
         let mut cell_by_id: BTreeMap<u64, Cell> = BTreeMap::new();
         let airs = self
-            .apc
-            // go through original instructions
-            .instructions()
-            // along with their substitutions
-            .zip_eq(self.apc.subs())
-            // map to `(air_name, substitutions)`
-            .filter_map(|(instr, subs)| {
-                if subs.is_empty() {
-                    None
-                } else {
-                    Some((&self.original_airs.opcode_to_air[&instr.inner.opcode], subs))
-                }
-            })
-            // group by air name. This results in `HashMap<air_name, Vec<subs>>` where the length of the vector is the number of rows which are created in this air, per apc call
-            .into_group_map()
-            // go through each air and its substitutions
+            .apc_gpu
+            .airs
             .iter()
             .enumerate()
-            .fold(
-                Vec::new(),
-                |mut airs, (air_index, (air_name, subs_by_row))| {
-                    subs_by_row
-                        .iter()
-                        // enumerate over them to get the row index inside the air block
-                        .enumerate()
-                        .for_each(|(row, subs)| {
-                            for sub in subs.iter() {
-                                cell_by_id.insert(
-                                    sub.apc_poly_id,
-                                    Cell {
-                                        air_index: air_index as i32,
-                                        col: sub.original_poly_index as i32,
-                                        row: row as i32,
-                                    },
-                                );
-                            }
-                        });
+            .map(|(air_index, air)| {
+                for (row, instruction_index) in air.instruction_indices.iter().enumerate() {
+                    let instruction = &self.apc.instructions[*instruction_index];
+                    for substitution in &instruction.substitutions {
+                        cell_by_id.insert(
+                            substitution.apc_poly_id,
+                            Cell {
+                                air_index: air_index as i32,
+                                col: substitution.original_poly_index as i32,
+                                row: row as i32,
+                            },
+                        );
+                    }
+                }
 
-                    // get the device dummy trace for this air
-                    let dummy_trace = &dummy_trace_by_air_name[*air_name];
+                let dummy_trace = &dummy_trace_by_air_name[&air.air_name];
 
-                    use openvm_stark_backend::prover::MatrixDimensions;
-                    airs.push(OriginalAir {
-                        width: dummy_trace.width() as i32,
-                        height: dummy_trace.height() as i32,
-                        buffer: dummy_trace.buffer().as_ptr(),
-                        row_block_size: subs_by_row.len() as i32,
-                    });
-
-                    airs
-                },
-            );
+                use openvm_stark_backend::prover::MatrixDimensions;
+                OriginalAir {
+                    width: dummy_trace.width() as i32,
+                    height: dummy_trace.height() as i32,
+                    buffer: dummy_trace.buffer().as_ptr(),
+                    row_block_size: air.instruction_indices.len() as i32,
+                }
+            })
+            .collect::<Vec<_>>();
 
         // Only surviving columns (those with a committed slot) are copied into the trace.
         let substitutions: Vec<Subst> = cell_by_id
@@ -401,8 +377,8 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // Apply derived columns using the GPU expression evaluator, reading inputs directly from the
         // dummy traces (`airs`) so no removed column is staged in the committed buffer.
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
-            &self.apc.machine.derived_columns,
-            &apc_poly_id_to_index,
+            &self.apc.apc.machine.derived_columns,
+            apc_poly_id_to_index,
             &cell_by_id,
             height,
         );
@@ -413,8 +389,8 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-            &self.apc.machine.bus_interactions,
-            &apc_poly_id_to_index,
+            &self.apc.apc.machine.bus_interactions,
+            apc_poly_id_to_index,
             height,
         );
         let bus_interactions = bus_interactions.to_device().unwrap();

@@ -19,7 +19,9 @@ use crate::{
     isa::IsaApc,
     isa::OpenVmISA,
     powdr_extension::{
-        chip::PowdrChipCpu, executor::OriginalArenas, trace_generator::cache::CachedApc,
+        chip::PowdrChipCpu,
+        executor::OriginalArenas,
+        trace_generator::cache::{CachedApc, CachedApcCpu},
     },
 };
 
@@ -72,6 +74,7 @@ impl<R, PB: ProverBackend<Matrix = RowMajorMatrix<BabyBear>>, ISA: OpenVmISA> Ch
 
 pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
     apc: CachedApc<BabyBear, ISA>,
+    apc_cpu: CachedApcCpu<BabyBear>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesCpu<ISA>,
 }
@@ -79,11 +82,13 @@ pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
 impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
     pub(crate) fn new(
         apc: CachedApc<BabyBear, ISA>,
+        apc_cpu: CachedApcCpu<BabyBear>,
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
         Self {
             apc,
+            apc_cpu,
             config,
             periphery,
         }
@@ -168,7 +173,9 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     .map(|r| &r.data[r.start..r.start + r.length])
                     .collect();
 
-                for (&dummy_row, instruction) in dummy_rows.iter().zip_eq(&self.apc.instructions) {
+                for (&dummy_row, instruction) in
+                    dummy_rows.iter().zip_eq(&self.apc_cpu.instructions)
+                {
                     for (dummy_trace_index, apc_index) in &instruction.copy_pairs {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
@@ -176,7 +183,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                 // Fill the computed columns (e.g. `is_valid`), each pre-resolved to its APC row
                 // index and a method reading its inputs from the dummy trace.
-                for (target_index, method) in &self.apc.columns_to_compute {
+                for (target_index, method) in &self.apc_cpu.columns_to_compute {
                     row_slice[*target_index] = evaluate_computation_method(method, &dummy_rows);
                 }
 

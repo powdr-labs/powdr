@@ -261,7 +261,6 @@ impl<ISA: OpenVmISA>
             inventory.next_air::<PowdrAir<BabyBear>>()?;
             let chip = PowdrChipGpu::new(
                 precompile.clone(),
-                extension.airs.clone(),
                 extension.base_config.clone(),
                 shared_chips_pair.clone(),
             );
