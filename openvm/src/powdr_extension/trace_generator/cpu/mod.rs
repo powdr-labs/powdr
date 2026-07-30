@@ -9,7 +9,7 @@ use openvm_stark_backend::{
     prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::trace_handler::{DummyCoord, ResolvedMethod, TraceTrait};
+use powdr_autoprecompiles::trace_handler::{CachedApc, DummyCoord, ResolvedMethod, TraceTrait};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::AlgebraicExpression;
 use powdr_number::ExpressionConvertible;
@@ -73,6 +73,8 @@ pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
     pub original_airs: OriginalAirs<BabyBear, ISA>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesCpu<ISA>,
+    /// Witness-independent precompute, built once here instead of per shard.
+    cached: CachedApc<BabyBear, String>,
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
@@ -82,11 +84,13 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
+        let cached = CachedApc::build(apc.as_ref(), &original_airs);
         Self {
             apc,
             original_airs,
             config,
             periphery,
+            cached,
         }
     }
 
@@ -94,8 +98,6 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         &self,
         original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
     ) -> DenseMatrix<BabyBear> {
-        use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
-
         let width = self.apc.machine().main_columns().count();
 
         let mut original_arenas = match original_arenas {
@@ -142,20 +144,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             })
             .collect();
 
-        let TraceData {
-            dummy_values,
-            dummy_trace_index_to_apc_index_by_instruction,
-            apc_poly_id_to_index,
-            columns_to_compute,
-        } = generate_trace(
-            &dummy_trace_by_air_name,
-            &self.original_airs,
-            num_apc_calls,
-            &self.apc,
-        );
+        let cached = &self.cached;
+        let dummy_values = cached.dummy_values(&dummy_trace_by_air_name, num_apc_calls);
 
         // allocate for apc trace
-        let width = apc_poly_id_to_index.len();
+        let width = cached.apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
@@ -178,7 +171,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                 for (&dummy_row, dummy_trace_index_to_apc_index) in dummy_rows
                     .iter()
-                    .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
+                    .zip_eq(&cached.dummy_trace_index_to_apc_index_by_instruction)
                 {
                     for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
@@ -187,11 +180,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                 // Fill the computed columns (e.g. `is_valid`), each pre-resolved to its APC row
                 // index and a method reading its inputs from the dummy trace.
-                for (target_index, method) in &columns_to_compute {
+                for (target_index, method) in &cached.columns_to_compute {
                     row_slice[*target_index] = evaluate_computation_method(method, &dummy_rows);
                 }
 
-                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
+                let evaluator = MappingRowEvaluator::new(row_slice, &cached.apc_poly_id_to_index);
 
                 // replay the side effects of this row on the main periphery
                 self.apc
