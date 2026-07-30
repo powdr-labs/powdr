@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785368492288,
+  "lastUpdate": 1785454927321,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417179,6 +417179,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 42644332449,
             "range": "± 333283706",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Steve Wang",
+            "username": "qwang98",
+            "email": "qian.wang.wg24@wharton.upenn.edu"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f70d6b1708a89737ad5de59dec7feda858c957cc",
+          "message": "update sp1 benchmarks to use latest sp1 powdr branch (#3798)\n\nPreviously, sp1 benchmarks exclusively depend on this branch:\nhttps://github.com/succinctlabs/sp1/tree/powdr-labs/split-powdr-config.\nAs can be seen from its commit history, it's basically a sp1 powdr\nbranch from April plus a few commits added on top to sync to a newer\npowdr version. This has the disadvantage of missing out on the latest\nsp1 and sp1 powdr updates.\n\nThis PR instead targets the latest sp1 powdr canonical branch which is\ncurrently this PR: https://github.com/succinctlabs/sp1/pull/2738. It has\nthe side effect of conflicting field crate import, which is also solved\nas described in the comments below. It turns out optimization results\nfor leanr is improved a bit in most cases.",
+          "timestamp": "2026-07-30T09:55:11Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/f70d6b1708a89737ad5de59dec7feda858c957cc"
+        },
+        "date": 1785454917344,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 19611206827,
+            "range": "± 757819980",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 39073710144,
+            "range": "± 433135056",
             "unit": "ns/iter"
           }
         ]
