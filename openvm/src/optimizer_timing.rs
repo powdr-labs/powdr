@@ -40,6 +40,13 @@ use serde::Serialize;
 /// The concrete `ApcInput` produced by the OpenVM adapter (BabyBear field, OpenVM bus types).
 type OpenVmApcInput = ApcInput<BabyBearField, OpenVmBusType>;
 
+/// Stack size for the threads that run the optimizers. The Lean optimizer recurses over its data
+/// structures, so the depth it needs grows with the size of the APC: the ~170k-constraint circuits
+/// overflow the 8 MiB main-thread stack. Every optimizer call therefore runs inside the rayon pool
+/// built with this stack size — including the serial isolation phase, which would otherwise run on
+/// `main`. Virtual address space only; pages are committed as they are touched.
+const OPTIMIZER_STACK_SIZE: usize = 512 << 20;
+
 /// One input circuit's size and the runtime of each optimizer on it.
 #[derive(Serialize, Clone)]
 struct CircuitTiming {
@@ -125,7 +132,13 @@ pub fn time_optimizers(dump_dir: &Path, output_path: &Path, isolate_top: usize) 
     }
 
     let total = work.len();
-    let parallelism = rayon::current_num_threads();
+    // Own pool rather than the global one, so every optimizer call runs on a thread with a
+    // Lean-sized stack (see `OPTIMIZER_STACK_SIZE`) instead of depending on `RUST_MIN_STACK`.
+    let pool = rayon::ThreadPoolBuilder::new()
+        .stack_size(OPTIMIZER_STACK_SIZE)
+        .build()
+        .expect("building the optimizer-timing thread pool");
+    let parallelism = pool.current_num_threads();
     tracing::info!(
         "Timing both optimizers over {total} input circuits across {} benchmarks, \
          {parallelism} threads",
@@ -133,17 +146,19 @@ pub fn time_optimizers(dump_dir: &Path, output_path: &Path, isolate_top: usize) 
     );
 
     // Pass 1 and 2: one parallel pass per optimizer, so only one kind of work is ever in flight.
-    let lean: Vec<(CircuitSize, f64)> = timed_pass("lean", &work, |input| {
-        let size = CircuitSize::of(&input.machine);
-        let runtime = time_lean_optimizer(
-            &input.machine,
-            input.degree_bound,
-            &input.bus_map,
-            input.next_free_id,
-        );
-        (size, runtime)
+    let lean: Vec<(CircuitSize, f64)> = pool.install(|| {
+        timed_pass("lean", &work, |input| {
+            let size = CircuitSize::of(&input.machine);
+            let runtime = time_lean_optimizer(
+                &input.machine,
+                input.degree_bound,
+                &input.bus_map,
+                input.next_free_id,
+            );
+            (size, runtime)
+        })
     });
-    let rust: Vec<f64> = timed_pass("rust", &work, run_rust);
+    let rust: Vec<f64> = pool.install(|| timed_pass("rust", &work, run_rust));
 
     let mut timings: Vec<CircuitTiming> = lean
         .into_iter()
@@ -165,15 +180,18 @@ pub fn time_optimizers(dump_dir: &Path, output_path: &Path, isolate_top: usize) 
     }
     for (n, &index) in isolated.iter().enumerate() {
         let path = &work[index].1;
-        let input = load(path);
-        let size = CircuitSize::of(&input.machine);
-        let lean_runtime = time_lean_optimizer(
-            &input.machine,
-            input.degree_bound,
-            &input.bus_map,
-            input.next_free_id,
-        );
-        let rust_runtime = run_rust(load(path));
+        // `install` runs this on a pool thread — one circuit at a time, but with the pool's stack.
+        let (size, lean_runtime, rust_runtime) = pool.install(|| {
+            let input = load(path);
+            let size = CircuitSize::of(&input.machine);
+            let lean_runtime = time_lean_optimizer(
+                &input.machine,
+                input.degree_bound,
+                &input.bus_map,
+                input.next_free_id,
+            );
+            (size, lean_runtime, run_rust(load(path)))
+        });
         tracing::info!(
             "  isolated {}/{}: {} vars, lean {lean_runtime:.1}s (loaded {:.1}s), \
              rust {rust_runtime:.1}s (loaded {:.1}s)",
