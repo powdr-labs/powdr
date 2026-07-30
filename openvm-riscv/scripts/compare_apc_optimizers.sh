@@ -14,10 +14,10 @@
 #   Phase 2 (time): `time-optimizers` reads every dumped circuit across all
 #   benchmarks and re-runs BOTH optimizers on each one, recording the input
 #   circuit's size (variables / constraints / bus interactions) and each
-#   optimizer's runtime. It makes one global rayon pass per optimizer (so only
-#   one kind of work is ever in flight), then re-times the `--isolate-top`
-#   costliest circuits serially, alone on the machine. Only those `isolated`
-#   runtimes are comparable across optimizer versions; see the module docs in
+#   optimizer's runtime. It makes one global rayon pass per optimizer, so only
+#   one kind of work is ever in flight, at a fixed `--threads` (default 24).
+#   Runtimes are measured under that load, so they are comparable within a
+#   report but not across reports; see the module docs in
 #   `openvm/src/optimizer_timing.rs`. Timing all benchmarks in one pass keeps
 #   cores busy: the few large circuits that dominate any one benchmark run
 #   alongside the many small circuits of the others.
@@ -25,7 +25,7 @@
 # The result is a JSON report:
 #   {"openvm-eth-version": "<hash>", "parallelism": <threads>, "benchmarks": [
 #       {"name": ..., "apcs": [{"constraints", "variables", "bus_interactions",
-#                               "rust_runtime", "lean_runtime", "isolated"}, ...]}]}
+#                               "rust_runtime", "lean_runtime"}, ...]}]}
 #
 # Prerequisites (same as the nightly `test_apc_guest` / `test_apc_reth` jobs):
 #   * `cargo openvm` + the OpenVM guest toolchain installed.
@@ -135,16 +135,15 @@ report = {
     "openvm-eth-version": openvm_eth,
     "powdr-version": powdr,
     "apc-optimizer-version": apc_opt,
-    # Carries the measurement conditions through: how many threads the loaded runtimes were
-    # measured under (the per-circuit `isolated` flags live in `benchmarks`).
+    # Carries the measurement conditions through: how many threads the runtimes were measured
+    # under, which is what makes them reproducible.
     "parallelism": data.get("parallelism"),
     "benchmarks": data["benchmarks"],
 }
 with open(out_path, "w") as f:
     json.dump(report, f, indent=2)
 n = sum(len(b["apcs"]) for b in report["benchmarks"])
-isolated = sum(a.get("isolated", False) for b in report["benchmarks"] for a in b["apcs"])
-print(f"  {len(report['benchmarks'])} benchmarks, {n} circuits ({isolated} isolated) -> {out_path}")
+print(f"  {len(report['benchmarks'])} benchmarks, {n} circuits -> {out_path}")
 PY
 
 echo "==== done ===="

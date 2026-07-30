@@ -5,21 +5,20 @@
 //! those dumps back and re-runs *both* optimizers on each circuit, recording the input circuit's
 //! size and each optimizer's runtime.
 //!
-//! ## Making the runtimes comparable across optimizer versions
+//! ## What the runtimes mean
 //!
-//! Timing 20k circuits one at a time would take many hours, so the bulk of the measurement runs in
-//! a rayon pool and every runtime it reports is a *loaded* one. Two things keep those numbers
-//! meaningful:
+//! Timing 20k circuits one at a time would take hours, so the measurement runs in a rayon pool and
+//! every runtime it reports is measured with other circuits in flight. Contention inflates them,
+//! by a factor that varies per circuit, so **the numbers are comparable within one report, not
+//! across reports**: use them for the shape of the comparison (which circuits are slow, how the two
+//! optimizers relate over 20k real inputs), and measure a specific circuit with the standalone
+//! apc-optimizer binary when you need a runtime that can be compared across optimizer versions.
 //!
-//! * **One kind of work in flight.** The two optimizers are timed in separate passes rather than
-//!   back-to-back per circuit. Interleaved, each optimizer's measured wall time depends on how much
-//!   of the *other* is co-scheduled with it, and that mix shifts as their relative speed changes —
-//!   so the same circuit could appear to get slower between two optimizer versions that both got
-//!   faster. Within a pass the co-scheduled work is always the same kind.
-//! * **Load-free anchors for the tail.** A few large circuits dominate the totals, and those are
-//!   exactly the ones contention distorts most. After the parallel passes, the `isolate_top`
-//!   costliest circuits are re-timed serially, alone on the machine, and reported with
-//!   `isolated: true`. Those runtimes are directly comparable across versions.
+//! The two optimizers are still timed in *separate* passes rather than back-to-back per circuit.
+//! Interleaved, each optimizer's measured time depends on how much of the *other* is co-scheduled
+//! with it, and that mix shifts as their relative speed changes — which once made a circuit look
+//! 14% slower between two apc-optimizer versions when it had in fact got 1.6x faster. Within a pass
+//! the co-scheduled work is always the same kind.
 //!
 //! Compiled only with the `lean-optimizer` feature.
 #![cfg(feature = "lean-optimizer")]
@@ -43,9 +42,12 @@ type OpenVmApcInput = ApcInput<BabyBearField, OpenVmBusType>;
 /// Stack size for the threads that run the optimizers. The Lean optimizer recurses over its data
 /// structures, so the depth it needs grows with the size of the APC: the ~170k-constraint circuits
 /// overflow the 8 MiB main-thread stack. Every optimizer call therefore runs inside the rayon pool
-/// built with this stack size — including the serial isolation phase, which would otherwise run on
-/// `main`. Virtual address space only; pages are committed as they are touched.
+/// built with this stack size. Virtual address space only; pages are committed as they are touched.
 const OPTIMIZER_STACK_SIZE: usize = 512 << 20;
+
+/// Threads to time with by default: half the cores on the machines this runs on, which halves the
+/// contention the reported runtimes carry while still finishing in well under an hour.
+const DEFAULT_THREADS: usize = 24;
 
 /// One input circuit's size and the runtime of each optimizer on it.
 #[derive(Serialize, Clone)]
@@ -55,26 +57,17 @@ struct CircuitTiming {
     bus_interactions: usize,
     rust_runtime: f64,
     lean_runtime: f64,
-    /// Whether these runtimes were measured serially, alone on the machine. Loaded runtimes
-    /// (`false`) are only comparable within one report; see the module docs.
-    isolated: bool,
 }
 
 impl CircuitTiming {
-    fn new(size: CircuitSize, lean_runtime: f64, rust_runtime: f64, isolated: bool) -> Self {
+    fn new(size: CircuitSize, lean_runtime: f64, rust_runtime: f64) -> Self {
         Self {
             variables: size.variables,
             constraints: size.constraints,
             bus_interactions: size.bus_interactions,
             rust_runtime,
             lean_runtime,
-            isolated,
         }
-    }
-
-    /// What the isolation phase ranks circuits by: the costlier optimizer decides.
-    fn cost(&self) -> f64 {
-        self.lean_runtime.max(self.rust_runtime)
     }
 }
 
@@ -87,8 +80,8 @@ struct BenchmarkResult {
 
 #[derive(Serialize)]
 struct TimingReport {
-    /// Threads the parallel passes ran with — the load the non-`isolated` runtimes were measured
-    /// under, and thus part of what makes them reproducible.
+    /// Threads the measurement ran with: the load every runtime in the report carries, and thus
+    /// part of what makes it reproducible.
     parallelism: usize,
     benchmarks: Vec<BenchmarkResult>,
 }
@@ -96,9 +89,9 @@ struct TimingReport {
 /// Time both optimizers over every dumped input circuit under `dump_dir` and write a JSON report.
 ///
 /// `dump_dir` holds one subdirectory per benchmark (named after the benchmark); each contains the
-/// `.cbor` input-circuit dumps written by [`powdr_autoprecompiles::build`]. `isolate_top` is how
-/// many of the costliest circuits to re-time serially afterwards (0 disables the phase).
-pub fn time_optimizers(dump_dir: &Path, output_path: &Path, isolate_top: usize) {
+/// `.cbor` input-circuit dumps written by [`powdr_autoprecompiles::build`]. `threads` is how many
+/// circuits to time concurrently, defaulting to [`DEFAULT_THREADS`].
+pub fn time_optimizers(dump_dir: &Path, output_path: &Path, threads: Option<usize>) {
     // Collect the benchmark subdirectories (in a stable order) and, for each, its dump files.
     // Flatten into one global `(benchmark_index, file)` work list so a single parallel pass spans
     // every circuit of every benchmark: the few large circuits that dominate any one benchmark then
@@ -132,10 +125,13 @@ pub fn time_optimizers(dump_dir: &Path, output_path: &Path, isolate_top: usize) 
     }
 
     let total = work.len();
-    // Own pool rather than the global one, so every optimizer call runs on a thread with a
-    // Lean-sized stack (see `OPTIMIZER_STACK_SIZE`) instead of depending on `RUST_MIN_STACK`.
+    // Own pool rather than the global one, for two reasons: every optimizer call runs on a thread
+    // with a Lean-sized stack (see `OPTIMIZER_STACK_SIZE`) instead of depending on
+    // `RUST_MIN_STACK`, and the thread count is fixed by the report rather than by the machine, so
+    // the load the runtimes carry is the same from run to run.
     let pool = rayon::ThreadPoolBuilder::new()
         .stack_size(OPTIMIZER_STACK_SIZE)
+        .num_threads(threads.unwrap_or(DEFAULT_THREADS))
         .build()
         .expect("building the optimizer-timing thread pool");
     let parallelism = pool.current_num_threads();
@@ -145,7 +141,7 @@ pub fn time_optimizers(dump_dir: &Path, output_path: &Path, isolate_top: usize) 
         benchmark_names.len()
     );
 
-    // Pass 1 and 2: one parallel pass per optimizer, so only one kind of work is ever in flight.
+    // One pass per optimizer, so only one kind of work is ever in flight.
     let lean: Vec<(CircuitSize, f64)> = pool.install(|| {
         timed_pass("lean", &work, |input| {
             let size = CircuitSize::of(&input.machine);
@@ -160,49 +156,13 @@ pub fn time_optimizers(dump_dir: &Path, output_path: &Path, isolate_top: usize) 
     });
     let rust: Vec<f64> = pool.install(|| timed_pass("rust", &work, run_rust));
 
-    let mut timings: Vec<CircuitTiming> = lean
+    let timings: Vec<CircuitTiming> = lean
         .into_iter()
         .zip(rust)
         .map(|((size, lean_runtime), rust_runtime)| {
-            CircuitTiming::new(size, lean_runtime, rust_runtime, false)
+            CircuitTiming::new(size, lean_runtime, rust_runtime)
         })
         .collect();
-
-    // Pass 3: re-time the costliest circuits serially, alone on the machine.
-    let mut ranked: Vec<usize> = (0..timings.len()).collect();
-    ranked.sort_by(|&a, &b| timings[b].cost().total_cmp(&timings[a].cost()));
-    let isolated = &ranked[..isolate_top.min(ranked.len())];
-    if !isolated.is_empty() {
-        tracing::info!(
-            "Re-timing the {} costliest circuits serially (isolated)",
-            isolated.len()
-        );
-    }
-    for (n, &index) in isolated.iter().enumerate() {
-        let path = &work[index].1;
-        // `install` runs this on a pool thread — one circuit at a time, but with the pool's stack.
-        let (size, lean_runtime, rust_runtime) = pool.install(|| {
-            let input = load(path);
-            let size = CircuitSize::of(&input.machine);
-            let lean_runtime = time_lean_optimizer(
-                &input.machine,
-                input.degree_bound,
-                &input.bus_map,
-                input.next_free_id,
-            );
-            (size, lean_runtime, run_rust(load(path)))
-        });
-        tracing::info!(
-            "  isolated {}/{}: {} vars, lean {lean_runtime:.1}s (loaded {:.1}s), \
-             rust {rust_runtime:.1}s (loaded {:.1}s)",
-            n + 1,
-            isolated.len(),
-            size.variables,
-            timings[index].lean_runtime,
-            timings[index].rust_runtime,
-        );
-        timings[index] = CircuitTiming::new(size, lean_runtime, rust_runtime, true);
-    }
 
     // Regroup by benchmark, preserving the benchmark order.
     let mut apcs_by_bench: Vec<Vec<CircuitTiming>> =

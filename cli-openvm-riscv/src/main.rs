@@ -75,11 +75,10 @@ struct TimeOptimizersArgs {
     #[arg(long)]
     output: PathBuf,
 
-    /// How many of the costliest circuits to re-time serially, alone on the machine, after the
-    /// parallel passes. Their runtimes are marked `isolated` and, unlike the loaded ones, are
-    /// comparable across optimizer versions. Costs roughly the serial runtime of those circuits.
-    #[arg(long, default_value = "10")]
-    isolate_top: usize,
+    /// How many circuits to time concurrently. Fixed rather than machine-derived so the load the
+    /// runtimes carry is the same from run to run; defaults to 24.
+    #[arg(long)]
+    threads: Option<usize>,
 }
 
 /// Args for the profiling stage.
@@ -331,7 +330,7 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
             powdr_openvm::optimizer_timing::time_optimizers(
                 &args.dump_dir,
                 &args.output,
-                args.isolate_top,
+                args.threads,
             );
             #[cfg(not(feature = "lean-optimizer"))]
             {
