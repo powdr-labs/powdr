@@ -9,7 +9,7 @@ use openvm_stark_backend::{
     prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
-use powdr_autoprecompiles::trace_handler::{CachedApc, DummyCoord, ResolvedMethod, TraceTrait};
+use powdr_autoprecompiles::trace_handler::{self, DummyCoord, ResolvedMethod, TraceTrait};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::AlgebraicExpression;
 use powdr_number::ExpressionConvertible;
@@ -36,7 +36,7 @@ pub struct SharedCpuTrace<F> {
     pub matrix: Arc<RowMajorMatrix<F>>,
 }
 
-impl<F: Send + Sync> TraceTrait<F> for SharedCpuTrace<F> {
+impl<F: Send + Sync> TraceTrait for SharedCpuTrace<F> {
     type Values = Vec<F>;
 
     fn width(&self) -> usize {
@@ -73,8 +73,9 @@ pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
     pub original_airs: OriginalAirs<BabyBear, ISA>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesCpu<ISA>,
-    /// Witness-independent precompute, built once here instead of per shard.
-    cached: CachedApc<BabyBear, String>,
+    /// CPU-specific dummy-trace layout, built once here (needs the instruction handler). The
+    /// backend-agnostic cache lives on the APC (see [`powdr_autoprecompiles::CachedApc`]).
+    dummy_layout: Vec<(String, usize, usize)>,
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
@@ -84,13 +85,13 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
-        let cached = CachedApc::build(apc.as_ref(), &original_airs);
+        let dummy_layout = trace_handler::dummy_layout(apc.as_ref(), &original_airs);
         Self {
             apc,
             original_airs,
             config,
             periphery,
-            cached,
+            dummy_layout,
         }
     }
 
@@ -144,8 +145,12 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             })
             .collect();
 
-        let cached = &self.cached;
-        let dummy_values = cached.dummy_values(&dummy_trace_by_air_name, num_apc_calls);
+        let cached = self.apc.cached();
+        let dummy_values = trace_handler::dummy_values(
+            &self.dummy_layout,
+            &dummy_trace_by_air_name,
+            num_apc_calls,
+        );
 
         // allocate for apc trace
         let width = cached.apc_poly_id_to_index.len();

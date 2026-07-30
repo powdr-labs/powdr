@@ -14,7 +14,9 @@ use crate::optimistic::execution_constraint_generator::generate_execution_constr
 use crate::optimistic::execution_literals::optimistic_literals;
 use crate::symbolic_machine::{SymbolicConstraint, SymbolicMachine};
 use crate::symbolic_machine_generator::convert_apc_field_type;
+use crate::trace_handler::{resolve_computation_method, DummyCoord, ResolvedMethod};
 use adapter::AdapterOptimisticConstraint;
+use derivative::Derivative;
 use execution::{
     ExecutionState, LocalOptimisticLiteral, OptimisticConstraint, OptimisticExpression,
     OptimisticLiteral,
@@ -27,9 +29,10 @@ use powdr_expression::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicUnaryOperation,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use symbolic_machine_generator::statements_to_symbolic_machine;
 
 use powdr_number::FieldElement;
@@ -225,7 +228,80 @@ pub struct Substitution {
     pub apc_poly_id: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Witness-independent APC trace-generation data, derived purely from the APC and shared by all
+/// proving backends. Built once when the [`Apc`] is created (see [`CachedApc::build`]); backends may
+/// stack their own precompute on top. Excluded from the APC's serialized / `Debug` form, since it is
+/// fully derivable from the original fields.
+#[derive(Clone, Debug)]
+pub struct CachedApc<F> {
+    /// Mapping from poly_id to the index in the list of apc columns. Unique and contiguous.
+    pub apc_poly_id_to_index: BTreeMap<u64, usize>,
+    /// Per instruction (with substitutions), the surviving columns' `(dummy index, APC index)`.
+    pub dummy_trace_index_to_apc_index_by_instruction: Vec<Vec<(usize, usize)>>,
+    /// `is_new` columns to fill: `(APC row index, method)`, references resolved to `DummyCoord`s.
+    pub columns_to_compute: Vec<(usize, ResolvedMethod<F>)>,
+}
+
+impl<F: Clone> CachedApc<F> {
+    fn build(machine: &SymbolicMachine<F>, subs: &[Vec<Substitution>]) -> Self {
+        let apc_poly_id_to_index: BTreeMap<u64, usize> = machine
+            .main_columns()
+            .enumerate()
+            .map(|(index, c)| (c.id, index))
+            .collect();
+
+        // Per instruction, surviving columns' copy pairs; and, keyed by poly_id, every substituted
+        // column's dummy location — used just below to resolve derived columns, then dropped.
+        // Indexed by position among instructions with substitutions (matches `dummy_layout`).
+        let mut dummy_trace_index_to_apc_index_by_instruction = Vec::new();
+        let mut apc_poly_id_to_dummy_index: BTreeMap<u64, DummyCoord> = BTreeMap::new();
+        for (instruction, subs) in subs.iter().filter(|subs| !subs.is_empty()).enumerate() {
+            let mut surviving = Vec::new();
+            for sub in subs {
+                apc_poly_id_to_dummy_index.insert(
+                    sub.apc_poly_id,
+                    DummyCoord {
+                        instruction,
+                        index: sub.original_poly_index,
+                    },
+                );
+                if let Some(index) = apc_poly_id_to_index.get(&sub.apc_poly_id) {
+                    surviving.push((sub.original_poly_index, *index));
+                }
+            }
+            dummy_trace_index_to_apc_index_by_instruction.push(surviving);
+        }
+
+        let columns_to_compute = machine
+            .derived_columns
+            .iter()
+            .filter(|d| d.is_new)
+            .map(|d| {
+                (
+                    apc_poly_id_to_index[&d.variable.id],
+                    resolve_computation_method(&d.computation_method, &apc_poly_id_to_dummy_index),
+                )
+            })
+            .collect();
+
+        Self {
+            apc_poly_id_to_index,
+            dummy_trace_index_to_apc_index_by_instruction,
+            columns_to_compute,
+        }
+    }
+}
+
+/// `Apc` (de)serializes and `Debug`s via its original fields only. The derived [`CachedApc`] is
+/// memoized on first access (see [`Apc::cached`]), not stored, since it is fully derivable.
+#[derive(Derivative, Serialize, Deserialize)]
+#[derivative(Clone, Debug)]
+// Override serde's inferred bounds: the skipped `cache` field otherwise forces a spurious
+// `T: Default` on deserialize. It is `OnceLock::default()` (empty) and rebuilt on first access.
+#[serde(
+    bound(deserialize = "SuperBlock<I>: Deserialize<'de>, SymbolicMachine<T>: \
+    Deserialize<'de>, OptimisticConstraints<A, V>: Deserialize<'de>")
+)]
 pub struct Apc<T, I, A, V> {
     /// The block this APC is based on
     pub block: SuperBlock<I>,
@@ -235,9 +311,28 @@ pub struct Apc<T, I, A, V> {
     pub subs: Vec<Vec<Substitution>>,
     /// The optimistic constraints to be satisfied for this apc to be run
     pub optimistic_constraints: OptimisticConstraints<A, V>,
+    /// Derived trace-generation data (see [`CachedApc`]). Built lazily, never serialized/cloned.
+    #[derivative(Clone(clone_with = "empty_cache"), Debug = "ignore")]
+    #[serde(skip)]
+    cache: OnceLock<CachedApc<T>>,
+}
+
+/// A fresh (empty) cache for a cloned APC; it is rebuilt on demand from the clone's own fields.
+fn empty_cache<T>(_: &OnceLock<CachedApc<T>>) -> OnceLock<CachedApc<T>> {
+    OnceLock::new()
 }
 
 impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
+    /// The derived trace-generation cache (see [`CachedApc`]), built once on first access and
+    /// shared across proving backends and shards.
+    pub fn cached(&self) -> &CachedApc<T>
+    where
+        T: Clone,
+    {
+        self.cache
+            .get_or_init(|| CachedApc::build(&self.machine, &self.subs))
+    }
+
     pub fn subs(&self) -> &[Vec<Substitution>] {
         &self.subs
     }
@@ -300,6 +395,7 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
             machine,
             subs,
             optimistic_constraints,
+            cache: OnceLock::new(),
         }
     }
 }

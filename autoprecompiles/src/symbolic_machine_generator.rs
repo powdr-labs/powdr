@@ -22,6 +22,7 @@ pub fn convert_apc_field_type<T, I, A, V, U>(
         machine: convert_machine_field_type(apc.machine, convert_field_element),
         subs: apc.subs,
         optimistic_constraints: apc.optimistic_constraints,
+        cache: std::sync::OnceLock::new(),
     }
 }
 

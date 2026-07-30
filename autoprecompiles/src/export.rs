@@ -236,6 +236,7 @@ fn instructions_to_powdr_field<A: Adapter>(
         machine: apc.machine,
         subs: apc.subs,
         optimistic_constraints: apc.optimistic_constraints,
+        cache: std::sync::OnceLock::new(),
     }
 }
 
