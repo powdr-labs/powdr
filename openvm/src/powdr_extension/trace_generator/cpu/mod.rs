@@ -183,20 +183,25 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                 let evaluator = MappingRowEvaluator::new(row_slice, &self.apc.apc_poly_id_to_index);
 
                 // replay the side effects of this row on the main periphery
-                self.apc.bus_interactions.iter().for_each(|interaction| {
-                    use powdr_autoprecompiles::expression::{
-                        AlgebraicEvaluator, ConcreteBusInteraction,
-                    };
+                self.apc
+                    .apc
+                    .machine()
+                    .bus_interactions
+                    .iter()
+                    .for_each(|interaction| {
+                        use powdr_autoprecompiles::expression::{
+                            AlgebraicEvaluator, ConcreteBusInteraction,
+                        };
 
-                    let ConcreteBusInteraction { id, mult, args } =
-                        evaluator.eval_bus_interaction(interaction);
-                    self.periphery.real.apply(
-                        id as u16,
-                        mult.as_canonical_u32(),
-                        args.map(|arg| arg.as_canonical_u32()),
-                        &self.periphery.bus_ids,
-                    );
-                });
+                        let ConcreteBusInteraction { id, mult, args } =
+                            evaluator.eval_bus_interaction(interaction);
+                        self.periphery.real.apply(
+                            id as u16,
+                            mult.as_canonical_u32(),
+                            args.map(|arg| arg.as_canonical_u32()),
+                            &self.periphery.bus_ids,
+                        );
+                    });
             });
 
         RowMajorMatrix::new(values, width)

@@ -11,6 +11,7 @@ use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_openvm_bus_interaction_handler::bus_map::BusMap;
+use serde::{Deserialize, Serialize};
 
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
@@ -27,9 +28,9 @@ use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     StarkProtocolConfig, Val,
 };
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound = "F: Field")]
 pub struct PowdrExtension<F, ISA: OpenVmISA> {
     pub precompiles: Vec<PowdrPrecompile<F, ISA>>,
     pub base_config: OriginalVmConfig<ISA>,
@@ -37,13 +38,16 @@ pub struct PowdrExtension<F, ISA: OpenVmISA> {
     pub airs: OriginalAirs<F, ISA>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound = "F: Field")]
 pub struct PowdrPrecompile<F, ISA: OpenVmISA> {
     pub name: String,
     pub opcode: PowdrOpcode,
     pub apc: CachedApc<F, ISA>,
     pub apc_stats: OvmApcStats,
+    #[serde(skip)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
+    #[serde(skip)]
     pub apc_record_arena_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
 }
 
@@ -83,86 +87,6 @@ impl<F, ISA: OpenVmISA> PowdrExtension<F, ISA> {
             bus_map,
             airs,
         }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "F: Field")]
-struct PowdrPrecompileSerde<F, ISA: OpenVmISA> {
-    name: String,
-    opcode: PowdrOpcode,
-    apc: IsaApc<F, ISA>,
-    apc_stats: OvmApcStats,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "F: Field")]
-struct PowdrExtensionSerde<F, ISA: OpenVmISA> {
-    precompiles: Vec<PowdrPrecompileSerde<F, ISA>>,
-    base_config: OriginalVmConfig<ISA>,
-    bus_map: BusMap,
-    airs: OriginalAirs<F, ISA>,
-}
-
-impl<F, ISA: OpenVmISA> Serialize for PowdrExtension<F, ISA>
-where
-    F: Field + Clone,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let helper = PowdrExtensionSerde {
-            precompiles: self
-                .precompiles
-                .iter()
-                .map(|precompile| PowdrPrecompileSerde {
-                    name: precompile.name.clone(),
-                    opcode: precompile.opcode.clone(),
-                    apc: precompile.apc.apc.clone(),
-                    apc_stats: precompile.apc_stats.clone(),
-                })
-                .collect(),
-            base_config: self.base_config.clone(),
-            bus_map: self.bus_map.clone(),
-            airs: self.airs.clone(),
-        };
-        helper.serialize(serializer)
-    }
-}
-
-impl<'de, F, ISA: OpenVmISA> Deserialize<'de> for PowdrExtension<F, ISA>
-where
-    F: Field + Clone,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let helper = PowdrExtensionSerde::<F, ISA>::deserialize(deserializer)?;
-        let PowdrExtensionSerde {
-            precompiles,
-            base_config,
-            bus_map,
-            airs,
-        } = helper;
-
-        let precompiles = precompiles
-            .into_iter()
-            .map(
-                |PowdrPrecompileSerde {
-                     name,
-                     opcode,
-                     apc,
-                     apc_stats,
-                 }| {
-                    let apc = CachedApc::new(apc, &airs.opcode_to_air);
-                    PowdrPrecompile::new(name, opcode, apc, apc_stats)
-                },
-            )
-            .collect();
-
-        Ok(Self::new(precompiles, base_config, bus_map, airs))
     }
 }
 

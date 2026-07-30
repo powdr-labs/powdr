@@ -12,7 +12,7 @@ pub struct OriginalRowReference<'a, D> {
 }
 
 /// A location in one apc call's dummy trace: instruction row and column within it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DummyCoord {
     pub instruction: usize,
     pub index: usize,
