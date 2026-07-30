@@ -86,6 +86,9 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
         let dummy_layout = trace_handler::dummy_layout(apc.as_ref(), &original_airs);
+        // Warm the shared APC cache now (prover setup), so it is never built lazily inside the
+        // per-shard trace-gen loop. Covers deserialized APCs too, whose cache starts empty.
+        apc.cached();
         Self {
             apc,
             original_airs,
