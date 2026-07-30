@@ -150,6 +150,32 @@ jobs:
       - name: Run large tests
         run: cargo nextest run --archive-file tests_cpu.tar.zst --workspace-remap . --verbose -E 'test(_large)' --run-ignored only --no-tests=warn
 
+  # sp1-benchmarks is a standalone workspace (excluded so its SP1 dep's plonky3 can't clash with openvm's in a shared lockfile), so it's not in the --workspace archive above and needs its own job + cache.
+  test_sp1_benchmarks:
+    runs-on: warp-ubuntu-2404-x64-8x
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: ⚡ Rust cache (sp1-benchmarks)
+        uses: WarpBuilds/cache@v1
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            sp1-benchmarks/target/
+          key: ${{ runner.os }}-cargo-sp1-benchmarks-${{ hashFiles('sp1-benchmarks/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-sp1-benchmarks-
+      - name: Install Rust toolchain 1.91.1 (stable)
+        run: rustup toolchain install 1.91.1
+      - name: Set cargo to perform shallow clones
+        run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+      - name: Test sp1-benchmarks (standalone workspace)
+        run: cargo +1.91.1 test --manifest-path sp1-benchmarks/Cargo.toml --release
+
   udeps_cpu:
     runs-on: ubuntu-22.04
 
