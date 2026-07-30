@@ -5,9 +5,9 @@ Instructions:
     3: xor        %x11       %x12       %x11      
 
 APC advantage:
-  - Main columns: 204 -> 113 (1.81x reduction)
+  - Main columns: 208 -> 113 (1.84x reduction)
   - Bus interactions: 100 -> 65 (1.54x reduction)
-  - Constraints: 80 -> 1 (80.00x reduction)
+  - Constraints: 88 -> 1 (88.00x reduction)
 
 Symbolic machine using 113 unique main columns:
   state__clk_high_0

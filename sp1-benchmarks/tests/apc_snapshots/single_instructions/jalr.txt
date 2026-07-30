@@ -2,11 +2,11 @@ Instructions:
     0: jalr       %x1        %x2        100       
 
 APC advantage:
-  - Main columns: 38 -> 19 (2.00x reduction)
+  - Main columns: 36 -> 20 (1.80x reduction)
   - Bus interactions: 22 -> 15 (1.47x reduction)
-  - Constraints: 30 -> 5 (6.00x reduction)
+  - Constraints: 28 -> 6 (4.67x reduction)
 
-Symbolic machine using 19 unique main columns:
+Symbolic machine using 20 unique main columns:
   state__clk_high_0
   state__clk_16_24_0
   state__clk_0_16_0
@@ -25,6 +25,7 @@ Symbolic machine using 19 unique main columns:
   add_operation__value__0__0_0
   add_operation__value__0__1_0
   add_operation__value__0__2_0
+  lsb_0
   is_valid
 
 // Bus 1 (MEMORY):
@@ -39,20 +40,21 @@ mult=is_valid, args=[3, 0, state__clk_16_24_0 + 32512 * adapter__op_b_memory__ac
 mult=is_valid, args=[6, add_operation__value__0__0_0, 16, 0]
 mult=is_valid, args=[6, add_operation__value__0__1_0, 16, 0]
 mult=is_valid, args=[6, add_operation__value__0__2_0, 16, 0]
-mult=is_valid, args=[6, -(532676608 * add_operation__value__0__0_0), 14, 0]
+mult=is_valid, args=[6, 532676608 * lsb_0 - 532676608 * add_operation__value__0__0_0, 14, 0]
 mult=is_valid, args=[6, 266338304 - 266338304 * state__clk_0_16_0, 13, 0]
 mult=is_valid, args=[6, adapter__op_a_memory__access_timestamp__diff_low_limb_0, 16, 0]
 mult=is_valid, args=[6, adapter__op_b_memory__access_timestamp__diff_low_limb_0, 16, 0]
 
 // Bus 7 (EXECUTION_BRIDGE):
 mult=-is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0, 0, 0, 0]
-mult=is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 8, add_operation__value__0__0_0, add_operation__value__0__1_0, add_operation__value__0__2_0]
+mult=is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 8, add_operation__value__0__0_0 - lsb_0, add_operation__value__0__1_0, add_operation__value__0__2_0]
 
 // Algebraic constraints:
 (32512 * add_operation__value__0__0_0 - (32512 * adapter__op_b_memory__prev_value__0__0_0 + 3251200 * is_valid)) * (32512 * add_operation__value__0__0_0 - (32512 * adapter__op_b_memory__prev_value__0__0_0 + 3251201)) = 0
 (1057030144 * adapter__op_b_memory__prev_value__0__0_0 + 32512 * add_operation__value__0__1_0 - (32512 * adapter__op_b_memory__prev_value__0__1_0 + 1057030144 * add_operation__value__0__0_0 + 832307250 * is_valid)) * (1057030144 * adapter__op_b_memory__prev_value__0__0_0 + 32512 * add_operation__value__0__1_0 - (32512 * adapter__op_b_memory__prev_value__0__1_0 + 1057030144 * add_operation__value__0__0_0 + 832307251)) = 0
 (16129 * adapter__op_b_memory__prev_value__0__0_0 + 1057030144 * adapter__op_b_memory__prev_value__0__1_0 + 32512 * add_operation__value__0__2_0 + 1612900 * is_valid - (32512 * adapter__op_b_memory__prev_value__0__2_0 + 16129 * add_operation__value__0__0_0 + 1057030144 * add_operation__value__0__1_0)) * (16129 * adapter__op_b_memory__prev_value__0__0_0 + 1057030144 * adapter__op_b_memory__prev_value__0__1_0 + 32512 * add_operation__value__0__2_0 + 1612899 - (32512 * adapter__op_b_memory__prev_value__0__2_0 + 16129 * add_operation__value__0__0_0 + 1057030144 * add_operation__value__0__1_0)) = 0
 (16129 * adapter__op_b_memory__prev_value__0__1_0 + 1057030144 * adapter__op_b_memory__prev_value__0__2_0 + 524386048 * add_operation__value__0__0_0 + 829056025 * is_valid - (524386048 * adapter__op_b_memory__prev_value__0__0_0 + 32512 * adapter__op_b_memory__prev_value__0__3_0 + 16129 * add_operation__value__0__1_0 + 1057030144 * add_operation__value__0__2_0)) * (16129 * adapter__op_b_memory__prev_value__0__1_0 + 1057030144 * adapter__op_b_memory__prev_value__0__2_0 + 524386048 * add_operation__value__0__0_0 + 829056024 - (524386048 * adapter__op_b_memory__prev_value__0__0_0 + 32512 * adapter__op_b_memory__prev_value__0__3_0 + 16129 * add_operation__value__0__1_0 + 1057030144 * add_operation__value__0__2_0)) = 0
+lsb_0 * (lsb_0 - 1) = 0
 is_valid * (is_valid - 1) = 0
 
 // Derived columns:

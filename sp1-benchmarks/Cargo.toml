@@ -1,20 +1,30 @@
+# Standalone workspace: sp1-benchmarks' SP1 dep pulls plonky3 `p3-field 0.4.3-succinct`,
+# which shares the `0.4` semver bucket with openvm's `0.4.1` and can't co-resolve in one
+# lockfile, so a separate lockfile lets each resolve independently.
+[workspace]
+
 [package]
 name = "sp1-benchmarks"
 description = "SP1 benchmark fixtures for powdr autoprecompile tests"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-homepage.workspace = true
-repository.workspace = true
+version = "0.1.4"
+edition = "2021"
+license = "MIT"
 
 [dependencies]
 
 [dev-dependencies]
-powdr-autoprecompiles.workspace = true
-pretty_assertions.workspace = true
-sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/split-powdr-config" }
-sp1-core-machine = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/split-powdr-config" }
-sp1-primitives = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/split-powdr-config" }
+powdr-autoprecompiles = { path = "../autoprecompiles" }
+pretty_assertions = "1.4.1"
+sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/apc-air-and-executor" }
+sp1-core-machine = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/apc-air-and-executor" }
+sp1-primitives = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/apc-air-and-executor" }
 
-[lints]
-workspace = true
+# SP1 pins powdr-* from crates.io; redirect those to the in-repo path crates so SP1's
+# transitive powdr unifies with our path dep (one copy, no trait mismatch) and
+# sp1-benchmarks exercises the powdr in this checkout.
+[patch.crates-io]
+powdr-riscv-elf = { path = "../riscv-elf" }
+powdr-number = { path = "../number" }
+powdr-autoprecompiles = { path = "../autoprecompiles" }
+powdr-expression = { path = "../expression" }
+powdr-constraint-solver = { path = "../constraint-solver" }
