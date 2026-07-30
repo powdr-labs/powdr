@@ -9,8 +9,8 @@
 # the test suite with the Lean optimizer enabled, stays green.
 #
 # The snapshot tests come in two flavours, both re-recorded via `UPDATE_EXPECT=1`:
-#   * `.txt` fixtures (openvm-riscv `apc_snapshots`, plus a few files under
-#     `autoprecompiles/tests/`)
+#   * `.txt` fixtures (openvm-riscv + sp1-benchmarks `apc_snapshots`, plus a few
+#     files under `autoprecompiles/tests/`)
 #   * inline `expect![[ ... ]]` snapshots rewritten in the Rust sources
 #     (autoprecompiles optimizer tests + openvm-riscv `*_machine_*` lib tests)
 #
@@ -54,8 +54,11 @@ cargo test --release -p powdr-openvm-riscv --features lean-optimizer \
 echo "Recording openvm-riscv machine-metric snapshots (compiles guests)..."
 cargo test --release -p powdr-openvm-riscv --features lean-optimizer --lib -- machine
 
-# NOTE: sp1-benchmarks is its own excluded workspace and its CI job runs on the
-# native optimizer (not Lean), so its snapshots are intentionally not recorded
-# here.
+# sp1-benchmarks is its own excluded workspace (separate lockfile), so it needs a
+# `--manifest-path` invocation; `powdr-autoprecompiles/lean-optimizer` pulls in
+# the Lean FFI for its (SP1/KoalaBear) APC path.
+echo "Recording sp1-benchmarks snapshots..."
+cargo test --release --manifest-path sp1-benchmarks/Cargo.toml \
+    --features powdr-autoprecompiles/lean-optimizer
 
 echo "Done. Review the snapshot diffs before committing."

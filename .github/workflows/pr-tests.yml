@@ -169,12 +169,28 @@ jobs:
           key: ${{ runner.os }}-cargo-sp1-benchmarks-${{ hashFiles('sp1-benchmarks/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-sp1-benchmarks-
+      # The Lean apc-optimizer's managed checkout (clone + compiled mathlib
+      # objects) lives here; cache it keyed on build.rs so a `lake build` from
+      # scratch only happens when the pinned revision changes.
+      - name: ⚡ Cache apc-optimizer (Lean) checkout
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/powdr-apc-optimizer
+          key: ${{ runner.os }}-apc-optimizer-${{ hashFiles('autoprecompiles-lean-ffi/build.rs') }}
       - name: Install Rust toolchain 1.91.1 (stable)
         run: rustup toolchain install 1.91.1
+      - name: Install Lean toolchain (elan)
+        # The `lean-optimizer` feature links the Lean apc-optimizer via FFI, whose
+        # build script needs `lean`/`lake`.
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Test sp1-benchmarks (standalone workspace)
-        run: cargo +1.91.1 test --manifest-path sp1-benchmarks/Cargo.toml --release
+        # Route sp1-benchmarks' APC generation through the Lean apc-optimizer too
+        # (feature links the FFI; POWDR_USE_LEAN_OPTIMIZER selects it at runtime).
+        run: cargo +1.91.1 test --manifest-path sp1-benchmarks/Cargo.toml --release --features powdr-autoprecompiles/lean-optimizer
 
   udeps_cpu:
     runs-on: ubuntu-22.04
