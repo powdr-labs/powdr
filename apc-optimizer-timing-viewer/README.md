@@ -18,38 +18,45 @@ Open `index.html` in a browser and either:
 index.html?data=<url-encoded-link-to-json>
 ```
 
+### Sharing an exact view
+
+The view settings round-trip through the query string, so any link reproduces what
+you were looking at. All of them are optional — `?data=<url>` alone opens the
+defaults — and only settings that differ from the defaults are written back:
+
+| Parameter | Meaning | Default |
+| --- | --- | --- |
+| `x`, `y` | scatter axis metrics: `constraints`, `bus_interactions`, `variables`, `powdr`, `lean`, `factor` | `variables`, `factor` |
+| `logx`, `logy` | log scale per axis (`1`/`0`) | both on |
+| `bench` | benchmark filter | all |
+| `sort` | table sort, `<column>:asc\|desc` (columns: `benchmark`, `apc`, `lean`, `powdr`, `factor`) | `factor:desc` |
+
+Unrecognized values fall back to the default rather than failing, so hand-edited
+and older links keep working. A `bench` naming a benchmark the loaded report does
+not contain is dropped instead of showing an empty table.
+
 ## Layout
 
 - **Left** — a sortable table of every APC: benchmark, APC index, lean runtime,
-  powdr (Rust) runtime, the `lean / powdr` slowdown factor, and how the runtimes
-  were measured (`isolated` = re-timed alone on the machine and comparable across
-  optimizer versions; `loaded` = measured with the whole pool busy). Click any
-  header to sort (toggles ascending/descending). A benchmark filter narrows the
-  rows.
+  powdr (Rust) runtime, and the `lean / powdr` slowdown factor. Click any header
+  to sort (toggles ascending/descending). A benchmark filter narrows the rows.
 - **Right, top** — histogram of slowdown factors across the (filtered) APCs,
   with a reference line at 1× (optimizers equal).
 - **Right, bottom** — scatter plot with selectable x/y axes (constraints, bus
-  interactions, variables, powdr runtime, lean runtime, slowdown factor) and a
-  log-scale toggle for both axes. Points are colored per benchmark; clicking a
-  point or a table row cross-highlights the other.
+  interactions, variables, powdr runtime, lean runtime, slowdown factor),
+  defaulting to variables against slowdown, with an independent log-scale toggle
+  per axis (both on by default). A log axis drops only the points that are
+  non-positive *on that axis*. Points are colored per benchmark; clicking a point
+  or a table row cross-highlights the other.
 
 ## Input format
 
 ```json
 {"openvm-eth-version": "<hash>",
- "parallelism": 48,
  "benchmarks": [{"name": "keccak",
                  "apcs": [{"variables": 62, "constraints": 53, "bus_interactions": 31,
-                           "rust_runtime": 0.05, "lean_runtime": 0.11,
-                           "isolated": false}, ...]}]}
+                           "rust_runtime": 0.05, "lean_runtime": 0.11}, ...]}]}
 ```
 
 "powdr" in the UI is the native Rust optimizer (`rust_runtime`); "lean" is the
 apc-optimizer (`lean_runtime`).
-
-`parallelism` is how many threads the benchmark ran with, and `isolated` marks
-the circuits it re-timed serially afterwards. Contention inflates runtimes by up
-to ~3.4x, unevenly across circuits and across the two optimizers, so only the
-`isolated` ones can be compared across optimizer versions — the rest are
-comparable within a report. Both fields are optional: reports produced before
-they existed render as `loaded` with no thread count shown.

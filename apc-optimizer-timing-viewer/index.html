@@ -116,7 +116,8 @@
       <div class="pane-tools">
         <span>x:</span><select id="xAxis"></select>
         <span>y:</span><select id="yAxis"></select>
-        <label><input type="checkbox" id="logScale"> log scale (both axes)</label>
+        <label><input type="checkbox" id="logX" checked> log x</label>
+        <label><input type="checkbox" id="logY" checked> log y</label>
       </div>
       <div class="chart-holder"><svg id="scatterSvg"></svg></div>
       <div class="legend" id="legend"></div>
@@ -162,9 +163,6 @@ const COLUMNS = [
   { key: "powdr",     label: "powdr (s)", type: "num", get: d => d.powdr, fmt: v => v.toFixed(3) },
   { key: "factor",    label: "lean / powdr", type: "num", get: d => d.factor,
     fmt: v => (v == null || !isFinite(v)) ? "—" : v.toFixed(2) + "×" },
-  // "isolated" rows were re-timed alone on the machine and are comparable across optimizer
-  // versions; "loaded" ones were measured with the whole pool busy (see `parallelism`).
-  { key: "isolated",  label: "Timing", type: "str", get: d => d.isolated ? "isolated" : "loaded" },
 ];
 
 let sortState = { key: "factor", dir: -1 }; // dir: 1 asc, -1 desc
@@ -183,7 +181,7 @@ function buildPoints(json) {
       pts.push({
         id: pts.length, benchmark: name, index: i,
         variables: +a.variables, constraints: +a.constraints, bus_interactions: +a.bus_interactions,
-        powdr, lean, factor, isolated: !!a.isolated,
+        powdr, lean, factor,
       });
     });
   }
@@ -203,8 +201,6 @@ function renderMeta(json) {
   const n = POINTS.length;
   const nb = (json.benchmarks || []).length;
   parts.push(`${n.toLocaleString()} APCs · ${nb} benchmarks`);
-  const isolated = POINTS.filter(p => p.isolated).length;
-  if (json.parallelism) parts.push(`${json.parallelism} threads, ${isolated} isolated`);
   if (json["openvm-eth-version"]) parts.push(`openvm-eth ${short(json["openvm-eth-version"])}`);
   if (json["apc-optimizer-version"]) parts.push(`apc-optimizer ${short(json["apc-optimizer-version"])}`);
   if (json["powdr-version"]) parts.push(`powdr ${short(json["powdr-version"])}`);
@@ -237,7 +233,7 @@ function renderHead() {
     th.onclick = () => {
       if (sortState.key === c.key) sortState.dir *= -1;
       else sortState = { key: c.key, dir: c.type === "str" ? 1 : -1 };
-      renderHead(); renderTable();
+      renderHead(); renderTable(); updateUrl();
     };
     tr.appendChild(th);
   }
@@ -455,16 +451,19 @@ function renderScatter() {
 
   const xKey = document.getElementById("xAxis").value;
   const yKey = document.getElementById("yAxis").value;
-  const log = document.getElementById("logScale").checked;
+  // Each axis has its own log toggle, so a point is only dropped for the axis that needs
+  // positive values (a slowdown of 0 still plots against a log x, and vice versa).
+  const logX = document.getElementById("logX").checked;
+  const logY = document.getElementById("logY").checked;
   const xM = METRICS[xKey], yM = METRICS[yKey];
 
   let pts = filteredPoints().map(p => ({ p, x: xM.get(p), y: yM.get(p) }))
-    .filter(d => isFinite(d.x) && isFinite(d.y) && (!log || (d.x > 0 && d.y > 0)));
+    .filter(d => isFinite(d.x) && isFinite(d.y) && (!logX || d.x > 0) && (!logY || d.y > 0));
   if (!pts.length) return;
 
   const xs = pts.map(d => d.x), ys = pts.map(d => d.y);
-  const x = makeScale(Math.min(...xs), Math.max(...xs), m.l, m.l + iw, log);
-  const y = makeScale(Math.min(...ys), Math.max(...ys), m.t + ih, m.t, log);
+  const x = makeScale(Math.min(...xs), Math.max(...xs), m.l, m.l + iw, logX);
+  const y = makeScale(Math.min(...ys), Math.max(...ys), m.t + ih, m.t, logY);
 
   const g = el("g", {}, svg);
   // grid + axes
@@ -506,10 +505,10 @@ function renderScatter() {
   }
   // labels
   const xl = el("text", { class: "axis-label", x: m.l + iw / 2, y: H - 6, "text-anchor": "middle" }, g);
-  xl.textContent = xM.label + (log ? " (log)" : "");
+  xl.textContent = xM.label + (logX ? " (log)" : "");
   const yl = el("text", { class: "axis-label", x: 14, y: m.t + ih / 2, "text-anchor": "middle",
     transform: `rotate(-90 14 ${m.t + ih / 2})` }, g);
-  yl.textContent = yM.label + (log ? " (log)" : "");
+  yl.textContent = yM.label + (logY ? " (log)" : "");
 }
 
 function renderLegend(json) {
@@ -531,9 +530,63 @@ function initAxisSelectors() {
     xs.appendChild(new Option(METRICS[k].label, k));
     ys.appendChild(new Option(METRICS[k].label, k));
   }
-  xs.value = "constraints"; ys.value = "factor";
-  xs.onchange = ys.onchange = renderScatter;
-  document.getElementById("logScale").onchange = renderScatter;
+  xs.value = DEFAULTS.x; ys.value = DEFAULTS.y;
+  xs.onchange = ys.onchange = () => { renderScatter(); updateUrl(); };
+  document.getElementById("logX").onchange = document.getElementById("logY").onchange =
+    () => { renderScatter(); updateUrl(); };
+}
+
+// ---------------------------------------------------------------------------
+// View state in the URL
+// ---------------------------------------------------------------------------
+// Every setting is optional and round-trips through the query string, so a view can be shared
+// exactly: `?data=<url>` on its own opens the defaults below, and only settings that differ from
+// them are written back (keeping shared links as short as they can be).
+const DEFAULTS = { x: "variables", y: "factor", logx: true, logy: true, bench: "", sort: "factor:desc" };
+
+function viewState() {
+  return {
+    x: document.getElementById("xAxis").value,
+    y: document.getElementById("yAxis").value,
+    logx: document.getElementById("logX").checked,
+    logy: document.getElementById("logY").checked,
+    bench: benchFilter,
+    sort: `${sortState.key}:${sortState.dir === 1 ? "asc" : "desc"}`,
+  };
+}
+
+function updateUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const state = viewState();
+  for (const key in DEFAULTS) {
+    const value = state[key];
+    if (value === DEFAULTS[key]) params.delete(key);
+    else params.set(key, typeof value === "boolean" ? (value ? "1" : "0") : value);
+  }
+  const query = params.toString();
+  history.replaceState(null, "", window.location.pathname + (query ? "?" + query : ""));
+}
+
+/// Apply the settings named in `params`. Missing or unrecognized ones keep their default, so an
+/// older link (or a hand-edited one) still opens.
+function applyUrlState(params) {
+  const x = params.get("x"), y = params.get("y");
+  if (x && METRICS[x]) document.getElementById("xAxis").value = x;
+  if (y && METRICS[y]) document.getElementById("yAxis").value = y;
+  const flag = (name, fallback) => {
+    const v = params.get(name);
+    return v === null ? fallback : !(v === "0" || v === "false");
+  };
+  document.getElementById("logX").checked = flag("logx", DEFAULTS.logx);
+  document.getElementById("logY").checked = flag("logy", DEFAULTS.logy);
+  // Validated against the loaded data in `renderAll`, which drops it if no such benchmark exists.
+  const bench = params.get("bench");
+  if (bench) benchFilter = bench;
+  const sort = params.get("sort");
+  if (sort) {
+    const [key, dir] = sort.split(":");
+    if (COLUMNS.some(c => c.key === key)) sortState = { key, dir: dir === "asc" ? 1 : -1 };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -544,10 +597,13 @@ function renderAll(json) {
   CURRENT_JSON = json;
   assignColors(json);
   POINTS = buildPoints(json);
-  selectedId = null; benchFilter = "";
-  document.getElementById("benchFilter").value = "";
+  selectedId = null;
+  // Keep a benchmark filter that this report actually has (it may come from the URL), drop it
+  // otherwise, so switching to an unrelated report cannot leave an empty table behind.
+  if (!(json.benchmarks || []).some(b => b.name === benchFilter)) benchFilter = "";
   renderMeta(json);
   renderBenchFilter(json);
+  document.getElementById("benchFilter").value = benchFilter;
   renderHead();
   renderTable();
   renderLegend(json);
@@ -617,7 +673,7 @@ document.getElementById("urlInput").addEventListener("keydown", e => {
 });
 document.getElementById("benchFilter").addEventListener("change", e => {
   benchFilter = e.target.value; selectedId = null;
-  renderTable(); renderHistogram(); renderScatter();
+  renderTable(); renderHistogram(); renderScatter(); updateUrl();
 });
 
 let resizeTimer = null;
@@ -630,6 +686,8 @@ window.addEventListener("resize", () => {
 initAxisSelectors();
 (function init() {
   const params = new URLSearchParams(window.location.search);
+  // Settings first, so the first render already uses the shared view.
+  applyUrlState(params);
   const dataUrl = params.get("data") || params.get("url");
   if (dataUrl) loadFromUrl(dataUrl, false);
 })();
