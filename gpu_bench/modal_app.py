@@ -134,6 +134,20 @@ def prove_block(
     with open(f"{cargo_dir}/config.toml", "w") as f:
         f.write(PATCH_CONFIG)
 
+    # Cargo drops a `[patch]` whose version differs from the one locked in
+    # openvm-eth's Cargo.lock and keeps the locked powdr git rev, which pins a
+    # conflicting openvm tag. Re-resolve so the local paths win.
+    powdr_crates = [
+        line.split("=")[0].strip()
+        for line in PATCH_CONFIG.splitlines()
+        if line.startswith("powdr-")
+    ]
+    subprocess.run(
+        ["cargo", "update", *[a for c in powdr_crates for a in ("-p", c)]],
+        cwd=eth,
+        check=True,
+    )
+
     rpc_tgz = f"/cache/{run_id}/rpc-cache.tgz"
     if not os.path.exists(rpc_tgz):
         # CI prefetches the block on the CPU runner; missing here means the
