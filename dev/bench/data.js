@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785454927321,
+  "lastUpdate": 1785520812601,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417213,6 +417213,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 39073710144,
             "range": "± 433135056",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "id": "01198150a9319933b103f4a4757a491e4bc7215f",
+          "message": "Pass --lean-optimizer explicitly on nightly run.sh calls\n\nClearer than relying on the POWDR_USE_LEAN_OPTIMIZER env var alone; all calls in\na job stay consistent so openvm-eth builds once.\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-07-31T17:44:15Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/01198150a9319933b103f4a4757a491e4bc7215f"
+        },
+        "date": 1785520802193,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 20544602621,
+            "range": "± 823692534",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 40520109263,
+            "range": "± 569491274",
             "unit": "ns/iter"
           }
         ]
