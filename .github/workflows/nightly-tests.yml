@@ -169,6 +169,10 @@ jobs:
     needs: resolve_apc_optimizer_rev
     runs-on: server-dev
 
+    outputs:
+      # publish_bench_results records this in run.txt; it has no openvm-eth checkout.
+      openvm_eth_ref: ${{ steps.patch_eth.outputs.ref }}
+
     env:
       # Route reth's APC generation through the Lean optimizer. This covers both
       # the CPU reth bench and the Modal GPU prove: the GPU prove replays the
@@ -178,7 +182,6 @@ jobs:
       # Read by the lean-ffi build script to pin the apc-optimizer checkout.
       APC_OPTIMIZER_REV: ${{ needs.resolve_apc_optimizer_rev.outputs.rev }}
       RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-      OPENVM_ETH_REF: 7987264fe4e96b9077cdcc15e5192a69df9d8413
       MODAL_VOLUME: powdr-nightly-gpu-cache
       # Same block flowed through prefetch, every compile invocation, every
       # Modal prove call, and the CPU prove loop so all caches + metrics agree.
@@ -224,6 +227,7 @@ jobs:
           mkdir -p results
 
       - name: Patch benchmark
+        id: patch_eth
         uses: ./.github/actions/patch-openvm-eth
 
       - name: Install Lean toolchain (elan) + enable it in openvm-eth
@@ -307,7 +311,7 @@ jobs:
               --block "$BLOCK_NUMBER" \
               --run-id "$RUN_ID" \
               --powdr-sha "$GITHUB_SHA" \
-              --openvm-eth-ref "$OPENVM_ETH_REF" \
+              --openvm-eth-ref "${{ steps.patch_eth.outputs.ref }}" \
               || echo "::warning::modal prove apc=${apc} failed; continuing"
           done
 
@@ -461,9 +465,13 @@ jobs:
       - name: Save revisions and run info
         env:
           APC_OPTIMIZER_REV: ${{ needs.resolve_apc_optimizer_rev.outputs.rev }}
+          # Empty if test_apc_reth failed before the checkout, leaving only guest results.
+          OPENVM_ETH_REF: ${{ needs.test_apc_reth.outputs.openvm_eth_ref }}
         run: |
-          OPENVM_ETH_REF=$(awk '/^[[:space:]]*ref:/ {print $2; exit}' .github/actions/patch-openvm-eth/action.yml)
-          echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
+          : > results/run.txt
+          if [ -n "$OPENVM_ETH_REF" ]; then
+            echo "openvm-eth: $OPENVM_ETH_REF" >> results/run.txt
+          fi
           echo "powdr: $GITHUB_SHA" >> results/run.txt
           if [ -n "$APC_OPTIMIZER_REV" ]; then
             echo "apc-optimizer: $APC_OPTIMIZER_REV" >> results/run.txt
