@@ -14,7 +14,7 @@ runs:
       with:
         repository: powdr-labs/openvm-eth
         # Set once here — no inputs required elsewhere.
-        ref: 4e2d7132dd58496db52b96dc34527701e87c37ca
+        ref: 968fc0e7e3766014fba8b75350f3d8c29e04fb47
         path: openvm-eth
 
     - name: Record checked-out ref
