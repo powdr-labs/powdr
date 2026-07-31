@@ -34,12 +34,10 @@ grep "APC_OPTIMIZER_REV: &str" "$BUILD_RS"
 #  - lean-optimizer feature: links the Lean apc-optimizer via FFI
 #  - POWDR_USE_LEAN_OPTIMIZER: selects it at runtime
 #  - UPDATE_EXPECT: overwrite the snapshot fixtures / inline expects
-#  - RUST_MIN_STACK: the Lean optimizer recurses deeply; give threads a big stack
 # Use `cargo test` (not nextest) so `expect_test`'s inline-snapshot rewriting
 # works reliably.
 export POWDR_USE_LEAN_OPTIMIZER=1
 export UPDATE_EXPECT=1
-export RUST_MIN_STACK=536870912
 
 echo "Recording autoprecompiles optimizer snapshots..."
 cargo test --release -p powdr-autoprecompiles --features lean-optimizer --test optimizer

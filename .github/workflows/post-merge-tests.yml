@@ -20,8 +20,6 @@ env:
   # Route APC generation through the Lean apc-optimizer (linked via the
   # `lean-optimizer` cargo feature, selected at runtime by this env var).
   POWDR_USE_LEAN_OPTIMIZER: "1"
-  # The Lean apc-optimizer recurses deeply; give worker threads a 512 MiB stack.
-  RUST_MIN_STACK: "536870912"
 
 jobs:
   test_guests_apc:
