@@ -87,14 +87,6 @@ jobs:
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-eth
 
-      - name: Enable Lean optimizer in openvm-eth
-        # Add the `lean-optimizer` feature to openvm-eth's FEATURES so its APC
-        # generation is routed through the Lean apc-optimizer (selected at runtime
-        # by POWDR_USE_LEAN_OPTIMIZER).
-        run: |
-          perl -i -pe 's{^FEATURES="parallel,metrics,jemalloc,unprotected"$}{FEATURES="parallel,metrics,jemalloc,unprotected,powdr-openvm/lean-optimizer,powdr-openvm-riscv/lean-optimizer"}' openvm-eth/run.sh
-          grep -q 'lean-optimizer' openvm-eth/run.sh || { echo "failed to patch openvm-eth FEATURES for lean-optimizer"; exit 1; }
-
       - name: Run reth benchmark
         run: |
           cd openvm-eth
@@ -102,8 +94,9 @@ jobs:
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
-          # Prove with 100 APCs. Block 24171384 has ~5M gas.
-          /usr/bin/time -v ./run.sh --apc 100  --mode prove-stark --block 24171384 || exit 1
+          # Prove with 100 APCs. Block 24171384 has ~5M gas. `--lean-optimizer`
+          # routes APC generation through the Lean apc-optimizer.
+          /usr/bin/time -v ./run.sh --lean-optimizer --apc 100  --mode prove-stark --block 24171384 || exit 1
           echo "Finished proving with 100 APCs"
 
       - name: Save revisions and run info
