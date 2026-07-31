@@ -181,7 +181,12 @@ jobs:
       # Read by the lean-ffi build script to pin the apc-optimizer checkout.
       APC_OPTIMIZER_REV: ${{ needs.resolve_apc_optimizer_rev.outputs.rev }}
       RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-      OPENVM_ETH_REF: 7987264fe4e96b9077cdcc15e5192a69df9d8413
+      # openvm-eth rev the Modal GPU prove clones. Keep in sync with the `ref:`
+      # in .github/actions/patch-openvm-eth/action.yml, which is what the CPU
+      # leg of this job builds — a stale value here silently proves a different
+      # openvm-eth (and, once the two pin different openvm tags, fails to
+      # resolve at all).
+      OPENVM_ETH_REF: b4204ea4e28298744088492b24062bf247cec122
       MODAL_VOLUME: powdr-nightly-gpu-cache
       # Same block flowed through prefetch, every compile invocation, every
       # Modal prove call, and the CPU prove loop so all caches + metrics agree.

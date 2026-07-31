@@ -26,3 +26,12 @@ runs:
         powdr-autoprecompiles = { path = "../autoprecompiles" }
         powdr-openvm-riscv-hints-circuit = { path = "../openvm-riscv/extensions/hints-circuit" }
         EOF
+
+        # openvm-eth's committed Cargo.lock pins the powdr crates to a version +
+        # git rev of powdr main. Cargo silently ignores a `[patch]` whose version
+        # differs from the locked one ("patch ... was not used in the crate
+        # graph") and keeps the locked git rev, which pins its own openvm tag —
+        # that then collides with openvm-eth's openvm tag on `links`. Re-resolve
+        # the patched crates so the local paths always win, whatever version
+        # powdr is at.
+        cargo update $(awk -F' *= *' '/^powdr-/ {printf "-p %s ", $1}' .cargo/config.toml)
