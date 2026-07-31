@@ -44,7 +44,7 @@ jobs:
     - name: Lint no default features
       run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
     - name: Build
-      run: cargo build --all-targets --features metrics,aot --all --profile pr-tests --verbose
+      run: cargo build --all-targets --features metrics,aot,lean-optimizer --all --profile pr-tests --verbose
     ###############################################################################
 
     - name: Delete the old cache
@@ -56,6 +56,7 @@ jobs:
           ~/.cargo/git/db/
           target/
           Cargo.lock
+          ~/.cargo/powdr-apc-optimizer/
         key: ${{ runner.os }}-cargo-pr-tests
         delete-cache: true
     
@@ -68,4 +69,5 @@ jobs:
           ~/.cargo/git/db/
           target/
           Cargo.lock
+          ~/.cargo/powdr-apc-optimizer/
         key: ${{ runner.os }}-cargo-pr-tests

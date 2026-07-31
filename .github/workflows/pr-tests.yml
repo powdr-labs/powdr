@@ -40,6 +40,7 @@ jobs:
             ~/.cargo/git/db/
             target/
             Cargo.lock
+            ~/.cargo/powdr-apc-optimizer/
           key: ${{ runner.os }}-cargo-pr-tests
       # The Lean apc-optimizer's managed checkout (clone + ~1200 compiled
       # mathlib objects under .lake/) lives here; cache it keyed on build.rs so a

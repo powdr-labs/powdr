@@ -38,6 +38,7 @@ jobs:
             ~/.cargo/git/db/
             target/
             Cargo.lock
+            ~/.cargo/powdr-apc-optimizer/
           key: ${{ runner.os }}-cargo-pr-tests
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt,rust-src
