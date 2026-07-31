@@ -3,9 +3,7 @@ description: "Checks out powdr-labs/openvm-eth at a fixed ref and patches it to 
 
 outputs:
   ref:
-    description: >
-      The openvm-eth commit that was actually checked out. Consume this instead
-      of repeating the sha — it is the single source of truth for the pin.
+    description: "The openvm-eth commit that was checked out."
     value: ${{ steps.rev.outputs.ref }}
 
 runs:
@@ -15,8 +13,7 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: powdr-labs/openvm-eth
-        # The one place the openvm-eth pin is written. Everything that needs the
-        # rev reads this action's `ref` output rather than restating it.
+        # Set once here — no inputs required elsewhere.
         ref: b4204ea4e28298744088492b24062bf247cec122
         path: openvm-eth
 
@@ -40,11 +37,7 @@ runs:
         powdr-openvm-riscv-hints-circuit = { path = "../openvm-riscv/extensions/hints-circuit" }
         EOF
 
-        # openvm-eth's committed Cargo.lock pins the powdr crates to a version +
-        # git rev of powdr main. Cargo silently ignores a `[patch]` whose version
-        # differs from the locked one ("patch ... was not used in the crate
-        # graph") and keeps the locked git rev, which pins its own openvm tag —
-        # that then collides with openvm-eth's openvm tag on `links`. Re-resolve
-        # the patched crates so the local paths always win, whatever version
-        # powdr is at.
+        # Cargo drops a `[patch]` whose version differs from the one locked in
+        # openvm-eth's Cargo.lock and keeps the locked powdr git rev, which pins
+        # a conflicting openvm tag. Re-resolve so the local paths win.
         cargo update $(awk -F' *= *' '/^powdr-/ {printf "-p %s ", $1}' .cargo/config.toml)

@@ -134,12 +134,9 @@ def prove_block(
     with open(f"{cargo_dir}/config.toml", "w") as f:
         f.write(PATCH_CONFIG)
 
-    # openvm-eth's committed Cargo.lock pins the powdr crates to a version + git
-    # rev of powdr main. Cargo silently ignores a `[patch]` whose version differs
-    # from the locked one ("patch ... was not used in the crate graph") and keeps
-    # the locked git rev, which pins its own openvm tag — that then collides with
-    # openvm-eth's openvm tag on `links`. Re-resolve the patched crates so the
-    # local paths always win, whatever version powdr is at.
+    # Cargo drops a `[patch]` whose version differs from the one locked in
+    # openvm-eth's Cargo.lock and keeps the locked powdr git rev, which pins a
+    # conflicting openvm tag. Re-resolve so the local paths win.
     powdr_crates = [
         line.split("=")[0].strip()
         for line in PATCH_CONFIG.splitlines()

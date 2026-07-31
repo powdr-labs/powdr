@@ -173,8 +173,7 @@ jobs:
     runs-on: server-dev
 
     outputs:
-      # Forwarded to publish_bench_results, which records it in run.txt but does
-      # not check out openvm-eth itself.
+      # publish_bench_results records this in run.txt; it has no openvm-eth checkout.
       openvm_eth_ref: ${{ steps.patch_eth.outputs.ref }}
 
     env:
@@ -469,9 +468,7 @@ jobs:
       - name: Save revisions and run info
         env:
           APC_OPTIMIZER_REV: ${{ needs.resolve_apc_optimizer_rev.outputs.rev }}
-          # Empty when test_apc_reth failed before checking openvm-eth out; this
-          # job still publishes whatever the guest bench produced, and the guest
-          # bench does not use openvm-eth.
+          # Empty if test_apc_reth failed before the checkout, leaving only guest results.
           OPENVM_ETH_REF: ${{ needs.test_apc_reth.outputs.openvm_eth_ref }}
         run: |
           : > results/run.txt
