@@ -8,9 +8,6 @@
 //! The input JSON must be a powdr APC export: `{"machine": <SymbolicMachine>, "bus_map":
 //! <BusMap>}`. The output is a bare `SymbolicMachine` JSON string, or `{"error": "..."}` on a
 //! parse failure inside Lean.
-//!
-//! The call runs on a thread with a Lean-sized stack ([`LEAN_STACK_SIZE`]), so callers do not have
-//! to provision one (e.g. via `RUST_MIN_STACK`).
 
 use std::ffi::{c_char, CStr, CString};
 
@@ -33,29 +30,19 @@ extern "C" {
     fn apc_optimizer_free(p: *mut c_char);
 }
 
-/// Stack size for the thread the Lean entry point runs on, mirroring the 1 GiB that Lean's own
-/// runtime gives `main` (`lean_run_main`, `lean::lthread::m_thread_stack_size`).
+/// The stack size to run the Lean entry point on: 1 GiB, the same that Lean's own runtime gives
+/// `main` (`lean::lthread::m_thread_stack_size`), overridable through Lean's own
+/// `LEAN_STACK_SIZE_KB`.
 ///
-/// Lean-compiled code recurses over its data structures — e.g. the optimizer's entry encoding
-/// walks the constraint list with one frame per constraint — so the depth grows with the size of
-/// the APC, and a 170k-constraint machine overflows the 8 MiB main / 2 MiB spawned-thread stacks
-/// Rust provides. It is virtual address space only: pages are committed as they are touched.
-const LEAN_STACK_SIZE: usize = 1 << 30;
-
-/// Name of Lean's own stack-size override, honored here with the same semantics as
-/// `lean_run_main`: a size in KiB, rounded down to a page, plus a 128 KiB slack.
-const LEAN_STACK_SIZE_KB_ENV: &str = "LEAN_STACK_SIZE_KB";
-
-/// The stack size to run the Lean entry point with: [`LEAN_STACK_SIZE`], or the value of
-/// `LEAN_STACK_SIZE_KB` if it is set to something that parses to a nonzero number of pages.
+/// Lean-compiled code recurses over its data structures — the optimizer's entry encoding walks the
+/// constraint list with one frame per constraint, and several passes are structured the same way —
+/// so the depth grows with the size of the APC and a large machine overflows the few MiB a Rust
+/// thread gets. Reserving 1 GiB costs address space only: pages are committed as they are touched.
 fn lean_stack_size() -> usize {
-    const PAGE_SIZE: usize = 4096;
-    std::env::var(LEAN_STACK_SIZE_KB_ENV)
+    std::env::var("LEAN_STACK_SIZE_KB")
         .ok()
         .and_then(|kb| kb.trim().parse::<usize>().ok())
-        .map(|kb| (kb * 1024) & !(PAGE_SIZE - 1))
-        .filter(|size| *size != 0)
-        .map_or(LEAN_STACK_SIZE, |size| size + 128 * 1024)
+        .map_or(1 << 30, |kb| kb * 1024)
 }
 
 /// Run the apc-optimizer on a powdr APC export JSON string.
@@ -68,9 +55,8 @@ fn lean_stack_size() -> usize {
 /// interior NUL bytes, if the Lean side reports a parse error (`{"error": ...}`), or if the
 /// returned bytes are not valid UTF-8.
 ///
-/// Runs on a dedicated thread with a [`LEAN_STACK_SIZE`] stack, because the Lean side needs far
-/// more stack than Rust threads get by default; see there. Blocks until it finishes, so this is
-/// still a plain synchronous call.
+/// The Lean call runs on a dedicated thread with a large stack (see `lean_stack_size`) and blocks
+/// until it finishes.
 pub fn optimize_json(
     vm: KnownVm,
     degree_identities: u64,
