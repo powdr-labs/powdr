@@ -1,6 +1,13 @@
 name: "Patch openvm-eth"
 description: "Checks out powdr-labs/openvm-eth at a fixed ref and patches it to use local powdr crates"
 
+outputs:
+  ref:
+    description: >
+      The openvm-eth commit that was actually checked out. Consume this instead
+      of repeating the sha — it is the single source of truth for the pin.
+    value: ${{ steps.rev.outputs.ref }}
+
 runs:
   using: "composite"
   steps:
@@ -8,9 +15,15 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: powdr-labs/openvm-eth
-        # Set once here — no inputs required elsewhere.
+        # The one place the openvm-eth pin is written. Everything that needs the
+        # rev reads this action's `ref` output rather than restating it.
         ref: b4204ea4e28298744088492b24062bf247cec122
         path: openvm-eth
+
+    - name: Record checked-out ref
+      id: rev
+      shell: bash
+      run: echo "ref=$(git -C openvm-eth rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
     - name: Patch openvm-eth to use local powdr
       shell: bash

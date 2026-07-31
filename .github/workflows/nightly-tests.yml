@@ -172,6 +172,11 @@ jobs:
     needs: resolve_apc_optimizer_rev
     runs-on: server-dev
 
+    outputs:
+      # Forwarded to publish_bench_results, which records it in run.txt but does
+      # not check out openvm-eth itself.
+      openvm_eth_ref: ${{ steps.patch_eth.outputs.ref }}
+
     env:
       # Route reth's APC generation through the Lean optimizer. This covers both
       # the CPU reth bench and the Modal GPU prove: the GPU prove replays the
@@ -181,12 +186,6 @@ jobs:
       # Read by the lean-ffi build script to pin the apc-optimizer checkout.
       APC_OPTIMIZER_REV: ${{ needs.resolve_apc_optimizer_rev.outputs.rev }}
       RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-      # openvm-eth rev the Modal GPU prove clones. Keep in sync with the `ref:`
-      # in .github/actions/patch-openvm-eth/action.yml, which is what the CPU
-      # leg of this job builds — a stale value here silently proves a different
-      # openvm-eth (and, once the two pin different openvm tags, fails to
-      # resolve at all).
-      OPENVM_ETH_REF: b4204ea4e28298744088492b24062bf247cec122
       MODAL_VOLUME: powdr-nightly-gpu-cache
       # Same block flowed through prefetch, every compile invocation, every
       # Modal prove call, and the CPU prove loop so all caches + metrics agree.
@@ -232,6 +231,7 @@ jobs:
           mkdir -p results
 
       - name: Patch benchmark
+        id: patch_eth
         uses: ./.github/actions/patch-openvm-eth
 
       - name: Install Lean toolchain (elan) + enable it in openvm-eth
@@ -315,7 +315,7 @@ jobs:
               --block "$BLOCK_NUMBER" \
               --run-id "$RUN_ID" \
               --powdr-sha "$GITHUB_SHA" \
-              --openvm-eth-ref "$OPENVM_ETH_REF" \
+              --openvm-eth-ref "${{ steps.patch_eth.outputs.ref }}" \
               || echo "::warning::modal prove apc=${apc} failed; continuing"
           done
 
@@ -469,9 +469,15 @@ jobs:
       - name: Save revisions and run info
         env:
           APC_OPTIMIZER_REV: ${{ needs.resolve_apc_optimizer_rev.outputs.rev }}
+          # Empty when test_apc_reth failed before checking openvm-eth out; this
+          # job still publishes whatever the guest bench produced, and the guest
+          # bench does not use openvm-eth.
+          OPENVM_ETH_REF: ${{ needs.test_apc_reth.outputs.openvm_eth_ref }}
         run: |
-          OPENVM_ETH_REF=$(awk '/^[[:space:]]*ref:/ {print $2; exit}' .github/actions/patch-openvm-eth/action.yml)
-          echo "openvm-eth: $OPENVM_ETH_REF" > results/run.txt
+          : > results/run.txt
+          if [ -n "$OPENVM_ETH_REF" ]; then
+            echo "openvm-eth: $OPENVM_ETH_REF" >> results/run.txt
+          fi
           echo "powdr: $GITHUB_SHA" >> results/run.txt
           if [ -n "$APC_OPTIMIZER_REV" ]; then
             echo "apc-optimizer: $APC_OPTIMIZER_REV" >> results/run.txt
