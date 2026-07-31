@@ -18,17 +18,20 @@ members = [
   "openvm-riscv/extensions/hints-guest",
   "openvm-riscv/extensions/hints-transpiler",
   "openvm-riscv/extensions/hints-circuit",
-  "sp1-benchmarks"
 ]
 
 # The Lean-FFI crate is excluded from the default workspace: its build script requires a Lean
 # toolchain + apc-optimizer checkout (APC_OPTIMIZER_DIR), which CI does not have. It is an
 # opt-in, path-based optional dependency of `powdr-autoprecompiles`, enabled via that crate's `lean-optimizer`
 # feature. Build it explicitly with `-p powdr-autoprecompiles --features lean-optimizer`.
-exclude = ["riscv-runtime", "autoprecompiles-lean-ffi"]
+#
+# sp1-benchmarks is its own workspace: its SP1 dep's plonky3 `p3-field 0.4.3-succinct`
+# shares the `0.4` bucket with openvm's `0.4.1` and can't co-resolve in one lockfile.
+# Build/test it with `cargo test` inside `sp1-benchmarks/`.
+exclude = ["riscv-runtime", "autoprecompiles-lean-ffi", "sp1-benchmarks"]
 
 [workspace.package]
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 license = "MIT"
 homepage = "https://powdr.org"
@@ -36,22 +39,22 @@ repository = "https://github.com/powdr-labs/powdr"
 
 [workspace.dependencies]
 # workspace crates
-powdr-constraint-solver = { path = "./constraint-solver", version = "0.1.4" }
-powdr-isa-utils = { path = "./isa-utils", version = "0.1.4" }
-powdr-expression = { path = "./expression", version = "0.1.4" }
-powdr-number = { path = "./number", version = "0.1.4" }
-powdr-riscv-elf = { path = "./riscv-elf", version = "0.1.4" }
-powdr-riscv-types = { path = "./riscv-types", version = "0.1.4" }
-powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
-powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.4" }
-powdr-autoprecompiles-lean-ffi = { path = "./autoprecompiles-lean-ffi", version = "0.1.4" }
-powdr-openvm-riscv = { path = "./openvm-riscv", version = "0.1.4" }
-powdr-openvm-bus-interaction-handler = { path = "./openvm-bus-interaction-handler", version = "0.1.4" }
-powdr-openvm = { path = "./openvm", version = "0.1.4" }
+powdr-constraint-solver = { path = "./constraint-solver", version = "0.1.5" }
+powdr-isa-utils = { path = "./isa-utils", version = "0.1.5" }
+powdr-expression = { path = "./expression", version = "0.1.5" }
+powdr-number = { path = "./number", version = "0.1.5" }
+powdr-riscv-elf = { path = "./riscv-elf", version = "0.1.5" }
+powdr-riscv-types = { path = "./riscv-types", version = "0.1.5" }
+powdr-syscalls = { path = "./syscalls", version = "0.1.5" }
+powdr-autoprecompiles = { path = "./autoprecompiles", version = "0.1.5" }
+powdr-autoprecompiles-lean-ffi = { path = "./autoprecompiles-lean-ffi", version = "0.1.5" }
+powdr-openvm-riscv = { path = "./openvm-riscv", version = "0.1.5" }
+powdr-openvm-bus-interaction-handler = { path = "./openvm-bus-interaction-handler", version = "0.1.5" }
+powdr-openvm = { path = "./openvm", version = "0.1.5" }
 
-powdr-openvm-riscv-hints-guest = { path = "./openvm-riscv/extensions/hints-guest", version = "0.1.4" }
-powdr-openvm-riscv-hints-transpiler = { path = "./openvm-riscv/extensions/hints-transpiler", version = "0.1.4" }
-powdr-openvm-riscv-hints-circuit = { path = "./openvm-riscv/extensions/hints-circuit", version = "0.1.4" }
+powdr-openvm-riscv-hints-guest = { path = "./openvm-riscv/extensions/hints-guest", version = "0.1.5" }
+powdr-openvm-riscv-hints-transpiler = { path = "./openvm-riscv/extensions/hints-transpiler", version = "0.1.5" }
+powdr-openvm-riscv-hints-circuit = { path = "./openvm-riscv/extensions/hints-circuit", version = "0.1.5" }
 
 # openvm
 openvm = { git = "https://github.com/powdr-labs/openvm.git", tag = "v2.0.0-beta.2-powdr.1" }
