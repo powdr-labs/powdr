@@ -188,7 +188,7 @@ jobs:
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
       - name: Test sp1-benchmarks (standalone workspace)
-        # Route sp1-benchmarks' APC generation through the Lean apc-optimizer too
+        # Route sp1-benchmarks' APC generation through the Lean apc-optimizer
         # (feature links the FFI; POWDR_USE_LEAN_OPTIMIZER selects it at runtime).
         run: cargo +1.91.1 test --manifest-path sp1-benchmarks/Cargo.toml --release --features powdr-autoprecompiles/lean-optimizer
 
@@ -216,9 +216,9 @@ jobs:
   build_gpu:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, gpu-shared]
-    # Bumped from 10: building the test archive with the `lean-optimizer` feature
-    # links the Lean apc-optimizer FFI, which recompiles on the first run after a
-    # rev bump (the persistent apc-optimizer checkout makes later runs fast).
+    # Building the test archive links the Lean apc-optimizer FFI, which recompiles
+    # from scratch on the first run after a rev bump; the persistent apc-optimizer
+    # checkout keeps later runs fast. Give it headroom.
     timeout-minutes: 30
 
     steps:
@@ -249,7 +249,7 @@ jobs:
         run: cargo build --all-targets --features cuda,metrics,aot --all --profile pr-tests --verbose
       - uses: taiki-e/install-action@nextest
       - name: Create tests archive (GPU, features=cuda)
-        # Add `lean-optimizer` so GPU tests also generate APCs through the Lean
+        # `lean-optimizer` routes GPU tests' APC generation through the Lean
         # apc-optimizer (selected at runtime by POWDR_USE_LEAN_OPTIMIZER).
         run: cargo nextest archive --archive-file tests_gpu.tar.zst --cargo-profile pr-tests --workspace --package powdr-openvm-riscv --features cuda,lean-optimizer
       - name: Upload build artifacts (GPU)
