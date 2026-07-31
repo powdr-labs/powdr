@@ -230,17 +230,15 @@ jobs:
         id: patch_eth
         uses: ./.github/actions/patch-openvm-eth
 
-      - name: Install Lean toolchain (elan) + enable it in openvm-eth
-        # Add the lean-optimizer feature to openvm-eth's hardcoded FEATURES so its
-        # APC generation is routed through the Lean apc-optimizer (linked via FFI,
-        # needs `lean`/`lake`); POWDR_USE_LEAN_OPTIMIZER selects it at runtime. The
-        # apc-cache compiled below is replayed by the Modal GPU prove, so both the
-        # CPU and GPU reth numbers come from Lean-generated APCs.
+      - name: Install Lean toolchain (elan)
+        # openvm-eth routes APC generation through the Lean apc-optimizer: the FFI
+        # needs `lean`/`lake`, and run.sh enables the feature from
+        # POWDR_USE_LEAN_OPTIMIZER=1. The apc-cache compiled below is replayed by
+        # the Modal GPU prove, so both the CPU and GPU reth numbers come from
+        # Lean-generated APCs.
         run: |
           curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-          perl -i -pe 's{^FEATURES="parallel,metrics,jemalloc,unprotected"$}{FEATURES="parallel,metrics,jemalloc,unprotected,powdr-openvm/lean-optimizer,powdr-openvm-riscv/lean-optimizer"}' openvm-eth/run.sh
-          grep -q 'lean-optimizer' openvm-eth/run.sh || { echo "failed to patch openvm-eth FEATURES for lean-optimizer"; exit 1; }
 
       # ---------- Modal-side preparation: prefetch + compile ----------
       # `--mode execute` populates openvm-eth/rpc-cache/ with the block
@@ -582,15 +580,13 @@ jobs:
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-eth
 
-      - name: Install Lean toolchain (elan) + enable it in openvm-eth
-        # Same as the CPU reth job: add the lean-optimizer feature to openvm-eth's
-        # FEATURES so APC generation (which this job runs on the GPU runner) goes
-        # through the Lean apc-optimizer, linked via FFI (needs `lean`/`lake`).
+      - name: Install Lean toolchain (elan)
+        # Same as the CPU reth job: APC generation (run here on the GPU runner)
+        # goes through the Lean apc-optimizer — the FFI needs `lean`/`lake`, and
+        # run.sh enables the feature from POWDR_USE_LEAN_OPTIMIZER=1.
         run: |
           curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-          perl -i -pe 's{^FEATURES="parallel,metrics,jemalloc,unprotected"$}{FEATURES="parallel,metrics,jemalloc,unprotected,powdr-openvm/lean-optimizer,powdr-openvm-riscv/lean-optimizer"}' openvm-eth/run.sh
-          grep -q 'lean-optimizer' openvm-eth/run.sh || { echo "failed to patch openvm-eth FEATURES for lean-optimizer"; exit 1; }
 
       - name: Run reth benchmark (GPU)
         run: |
