@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785627430493,
+  "lastUpdate": 1785713871145,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417315,6 +417315,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 41305760468,
             "range": "± 284742909",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "4e2d7132dd58496db52b96dc34527701e87c37ca",
+          "message": "ci: re-resolve the powdr crates after patching openvm-eth (#3810)\n\n## Problem\n\nEvery openvm-eth job has failed at Cargo resolution since the `0.1.4 ->\n0.1.5` bump (#3805, 07-28 10:50 — last green nightly was 07-27): nightly\n`test_apc_reth` + `test_apc_gpu`, and `test_apc_reth_compilation` +\n`test_apc_reth_app_proof` on PRs.\n\n```\nerror: failed to select a version for `openvm-circuit-primitives`.\n    ... required by package `powdr-openvm v0.1.4 (powdr.git?branch=main#96c23121)`\n    ... which satisfies git dependency `powdr-openvm` (locked to 0.1.4)\npackage `openvm-circuit-primitives` links to the native library `circuit-primitives-cuda`,\nbut it conflicts with a previous package ... (openvm.git?tag=v2.0.0-beta.2-powdr.1)\n```\n\nopenvm-eth's committed `Cargo.lock` pins the powdr crates at 0.1.4 from\n`powdr.git?branch=main#96c23121`. `patch-openvm-eth` redirects them to\nthe local checkout, now 0.1.5 — and Cargo ignores a `[patch]` whose\nversion differs from the locked one, so it kept the locked April rev.\nThat rev pins openvm `v2.0.0-beta.2-powdr` while openvm-eth pins\n`v2.0.0-beta.2-powdr.1`, and the two collide on `links =\n\"circuit-primitives-cuda\"`.\n\nopenvm-eth needs no change. Refreshing its lock would also work, but\nonly until 0.1.6.\n\n## Changes\n\n**`cargo update` the patched crates** after writing the patch config, so\nthe local paths win whatever version powdr is at. The crate list is\nderived from the patch config, so the two can't drift. Applied both in\nthe composite action and in `gpu_bench/modal_app.py`, which carries its\nown copy of `PATCH_CONFIG`.\n\n**One source of truth for the openvm-eth pin.** The sha was written\ntwice — the action's `ref:` and `test_apc_reth`'s `OPENVM_ETH_REF` — and\nawk-scraped out of the action YAML in a third place. The action now\npublishes the commit it actually checked out as a `ref` output;\n`test_apc_reth` feeds that to the Modal prove and forwards it as a job\noutput to `publish_bench_results`. The sha is now written exactly once,\nin the checkout step's `ref:`.\n\n`test_apc_gpu` and `post-merge-tests` keep `git -C openvm-eth rev-parse\nHEAD` — same truth, read off the checkout, duplicates nothing.\n\n## That duplicate literal had already broken the GPU prove\n\n`OPENVM_ETH_REF` pointed at the April rev `7987264` while the action\nchecked out `b4204ea4`, so the Modal GPU prove cloned a different\nopenvm-eth than the CPU leg of the same job. It had been failing with\nthis same resolution error ever since powdr moved to the `.1` openvm tag\n— including inside the 07-27 \"green\" nightly:\n\n```\n##[warning]modal prove apc=0 failed; continuing\n```\n\n`continue-on-error: true` masked it, so the nightly GPU reth numbers\nhave been missing rather than wrong.\n\n## Verification\n\nReproduced against a fresh openvm-eth checkout at the pinned ref: `cargo\nmetadata` failed with the exact CI error; with the `cargo update` it\nresolves clean — powdr crates all local, openvm collapsed to one\n`v2.0.0-beta.2-powdr.1` source. Ran with the relative paths CI uses.\n\n`results/run.txt` is byte-identical when the reth job succeeds. When\nreth failed before checking openvm-eth out, the `openvm-eth:` line is\nnow omitted rather than naming a rev nothing was built from.\n\nNo Rust changed. The Modal GPU leg is nightly-only, so that half gets\nits first signal tonight.\n\nReading the logs: the `patch ... was not used in the crate graph`\nwarnings prefixed `openvm build:` come from the guest build. They're\nbenign and long-standing — not this bug.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nCo-authored-by: Claude Opus 5 <noreply@anthropic.com>",
+          "timestamp": "2026-07-31T16:42:18Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/4e2d7132dd58496db52b96dc34527701e87c37ca"
+        },
+        "date": 1785713860845,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 17526500034,
+            "range": "± 1528093180",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 40254887795,
+            "range": "± 582965670",
             "unit": "ns/iter"
           }
         ]
