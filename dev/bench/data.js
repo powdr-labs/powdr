@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785774502831,
+  "lastUpdate": 1785800472776,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417383,6 +417383,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 40939306082,
             "range": "± 1052605735",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "fe7b318fba06c125a4869b93ed1dcbe5d81952a8",
+          "message": "Enable the Lean apc-optimizer in all CI jobs (#3800)\n\n## What\n\nTurns on the Lean apc-optimizer (already used in the nightly benchmarks)\nacross **all** CI jobs, so the whole test suite — including the snapshot\ntests — generates APCs through it.\n\n### Workflow changes (`pr-tests`, `pr-tests-with-secrets`,\n`post-merge-tests`, `build-cache`, `nightly-tests`)\n- Install the Lean toolchain (elan) wherever APCs are built.\n- Build with the `lean-optimizer` cargo feature (CPU + GPU test\narchives; the standalone `sp1-benchmarks` job; `--features\nlean-optimizer` on the guest `cargo run`s) and set\n`POWDR_USE_LEAN_OPTIMIZER=1` to select it at runtime.\n- For the openvm-eth reth jobs, pass `run.sh --lean-optimizer` (from\n[powdr-labs/openvm-eth#14](https://github.com/powdr-labs/openvm-eth/pull/14),\nwhich adds the flag), replacing the old perl-patch of openvm-eth's\n`FEATURES`. The openvm-eth ref is bumped to that PR's merge commit, and\nthe `cargo update` re-resolution workaround in `patch-openvm-eth` is\ndropped (fixed on openvm-eth's side).\n- Cache the apc-optimizer managed checkout\n(`~/.cargo/powdr-apc-optimizer`, keyed on `build.rs`) so a `lake build`\nfrom scratch only happens on a rev bump; `build-cache` warms the FFI\ninto the shared PR cache.\n\n### Snapshots re-recorded\nBecause the optimizer output differs, all optimizer-dependent snapshots\nare re-recorded:\n- `openvm-riscv` + `sp1-benchmarks` `apc_snapshots/*.txt`\n- `autoprecompiles/tests/optimizer.rs` (+ `wasm_register_reuse.txt`)\ninline `expect!` snapshots\n- `openvm-riscv/src/lib.rs` `*_machine_*` inline `expect!` snapshots\n\n### `update_lean_optimizer.sh` (new)\nBumps `APC_OPTIMIZER_REV` in `build.rs` to the latest apc-optimizer\n`main` and re-records every snapshot test. Run it whenever the optimizer\nis updated. Currently pinned at `ced29371`.\n\n## CI cost of enabling Lean\n\nOnly the jobs that build the Lean FFI cost anything; every other job\njust replays the prebuilt test archive, so it's independent of the\napc-optimizer cache and stays within noise of `main`. Minutes; shared\nrunners, so ±2–3 min jitter. Baseline is the last merged PR,\n[#3810](https://github.com/powdr-labs/powdr/pull/3810) (native\noptimizer).\n\n| Job | `main` (#3810, native) | this PR (Lean) | note |\n| --- | ---: | ---: | --- |\n| `build_cpu` | 5.9 | 8.2 | +2.3 — links the FFI (warm mathlib cache) |\n| `build_gpu` | 8.3 | 8.9 | ~noise |\n| `test_sp1_benchmarks` | 2.6 | 4.2 | +1.6 — builds the FFI standalone |\n| `test_apc_reth_compilation` | 26.3 | 25.1 | ~noise |\n| `test_apc_reth_app_proof` | 17.0 | 28.1 | +11 — cold `lake build` on\nthat runner (one-time per rev) |\n| `test_large_cpu` | 20.8 | 13.1 | cache-independent (noise) |\n| `test_quick_cpu` (range) | 5.8–19.0 | 4.9–12.4 | cache-independent\n(noise) |\n| `test_medium_cpu` (range) | 5.6–11.1 | 5.6–12.7 | cache-independent\n(noise) |\n| `test_quick_gpu` | 11.0 | ~11 | cache-independent (replays the\narchive) |\n| `udeps_cpu` | 9.1 | 8.6 | no Lean build |\n\n- **Warm cache (every normal push):** the FFI-building jobs add roughly\n`build_cpu` +2 and `test_sp1_benchmarks` +2; the reth-compilation job is\nflat. Test-execution jobs are unaffected — the Lean optimizer isn't\nslower per-APC at current revs.\n- **Cold cache (first run after a rev bump, and any runner without the\ncheckout cached):** the FFI-building jobs additionally pay a one-time\n`lake build` of mathlib (~+10 min, e.g. the reth app-proof job above),\nthen the cache absorbs it.\n\n## Validation\n- Full workspace suite with Lean on (`--no-default-features --features\nlean-optimizer`, `POWDR_USE_LEAN_OPTIMIZER=1`): 340 tests, **0 failed**\n(only the usual slow-test timeouts under the quick profile).\n- `cargo fmt --all --check` and `cargo clippy --all --all-targets\n--features metrics,aot -- -D warnings` clean.\n- Full CI green, including GPU and the openvm-eth reth jobs.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-08-03T16:14:14Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/fe7b318fba06c125a4869b93ed1dcbe5d81952a8"
+        },
+        "date": 1785800462944,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 18379413613,
+            "range": "± 718797841",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 40394674034,
+            "range": "± 674259148",
             "unit": "ns/iter"
           }
         ]
