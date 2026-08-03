@@ -38,6 +38,7 @@ jobs:
             ~/.cargo/git/db/
             target/
             Cargo.lock
+            ~/.cargo/powdr-apc-optimizer/
           key: ${{ runner.os }}-cargo-pr-tests
       - name: Install Rust toolchain nightly-2025-10-01 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2025-10-01 --component clippy,rustfmt,rust-src
@@ -230,17 +231,14 @@ jobs:
         id: patch_eth
         uses: ./.github/actions/patch-openvm-eth
 
-      - name: Install Lean toolchain (elan) + enable it in openvm-eth
-        # Add the lean-optimizer feature to openvm-eth's hardcoded FEATURES so its
-        # APC generation is routed through the Lean apc-optimizer (linked via FFI,
-        # needs `lean`/`lake`); POWDR_USE_LEAN_OPTIMIZER selects it at runtime. The
-        # apc-cache compiled below is replayed by the Modal GPU prove, so both the
-        # CPU and GPU reth numbers come from Lean-generated APCs.
+      - name: Install Lean toolchain (elan)
+        # `run.sh --lean-optimizer` (below) links the Lean apc-optimizer FFI, which
+        # needs `lean`/`lake`. The apc-cache compiled below is replayed by the
+        # Modal GPU prove, so both the CPU and GPU reth numbers come from
+        # Lean-generated APCs.
         run: |
           curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-          perl -i -pe 's{^FEATURES="parallel,metrics,jemalloc,unprotected"$}{FEATURES="parallel,metrics,jemalloc,unprotected,powdr-openvm/lean-optimizer,powdr-openvm-riscv/lean-optimizer"}' openvm-eth/run.sh
-          grep -q 'lean-optimizer' openvm-eth/run.sh || { echo "failed to patch openvm-eth FEATURES for lean-optimizer"; exit 1; }
 
       # ---------- Modal-side preparation: prefetch + compile ----------
       # `--mode execute` populates openvm-eth/rpc-cache/ with the block
@@ -252,7 +250,7 @@ jobs:
           # Start every nightly from a fresh APC cache.
           rm -rf apc-cache
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
-          ./run.sh --apc 0 --block "$BLOCK_NUMBER" --mode execute || exit 1
+          ./run.sh --lean-optimizer --apc 0 --block "$BLOCK_NUMBER" --mode execute || exit 1
           tar -czf ../rpc-cache.tgz rpc-cache
 
       # `--mode compile --apc N` runs powdr's staged generate→select→setup
@@ -267,7 +265,7 @@ jobs:
         run: |
           cd openvm-eth
           for apc in 0 3 10 30 100; do
-            ./run.sh --apc "$apc" --block "$BLOCK_NUMBER" --mode compile || exit 1
+            ./run.sh --lean-optimizer --apc "$apc" --block "$BLOCK_NUMBER" --mode compile || exit 1
           done
           tar -czf ../apc-cache.tgz apc-cache
           # Snapshot apc_candidates.json now (compile time) so the Modal
@@ -378,31 +376,31 @@ jobs:
           mkdir -p $RES_DIR
 
           # prove with no APCs
-          ./run.sh --block "$BLOCK_NUMBER" --apc 0 --mode prove-stark || exit 1
+          ./run.sh --lean-optimizer --block "$BLOCK_NUMBER" --apc 0 --mode prove-stark || exit 1
           echo "Finished proving with no APCs"
           mv metrics.json $RES_DIR/apc000.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # prove with 3 APCs
-          ./run.sh --block "$BLOCK_NUMBER" --apc 3 --mode prove-stark || exit 1
+          ./run.sh --lean-optimizer --block "$BLOCK_NUMBER" --apc 3 --mode prove-stark || exit 1
           echo "Finished proving with 3 APCs"
           mv metrics.json $RES_DIR/apc003.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc003.png $RES_DIR/apc003.json > $RES_DIR/trace_cells_apc003.txt
 
           # prove with 10 APCs
-          ./run.sh --block "$BLOCK_NUMBER" --apc 10 --mode prove-stark || exit 1
+          ./run.sh --lean-optimizer --block "$BLOCK_NUMBER" --apc 10 --mode prove-stark || exit 1
           echo "Finished proving with 10 APCs"
           mv metrics.json $RES_DIR/apc010.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
           # prove with 30 APCs
-          ./run.sh --block "$BLOCK_NUMBER" --apc 30 --mode prove-stark || exit 1
+          ./run.sh --lean-optimizer --block "$BLOCK_NUMBER" --apc 30 --mode prove-stark || exit 1
           echo "Finished proving with 30 APCs"
           mv metrics.json $RES_DIR/apc030.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
 
           # prove with 100 APCs, recording mem usage
-          psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh --block $BLOCK_NUMBER --apc 100 --mode prove-stark" || exit 1
+          psrecord --include-children --interval 1 --log $RES_DIR/psrecord.csv --log-format csv --plot $RES_DIR/psrecord.png "./run.sh --lean-optimizer --block $BLOCK_NUMBER --apc 100 --mode prove-stark" || exit 1
           echo "Finished proving with 100 APCs"
           mv metrics.json $RES_DIR/apc100.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc100.png $RES_DIR/apc100.json > $RES_DIR/trace_cells_apc100.txt
@@ -582,15 +580,13 @@ jobs:
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-eth
 
-      - name: Install Lean toolchain (elan) + enable it in openvm-eth
-        # Same as the CPU reth job: add the lean-optimizer feature to openvm-eth's
-        # FEATURES so APC generation (which this job runs on the GPU runner) goes
-        # through the Lean apc-optimizer, linked via FFI (needs `lean`/`lake`).
+      - name: Install Lean toolchain (elan)
+        # Same as the CPU reth job: `run.sh --lean-optimizer` links the Lean
+        # apc-optimizer FFI (APC generation runs here on the GPU runner), which
+        # needs `lean`/`lake`.
         run: |
           curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-          perl -i -pe 's{^FEATURES="parallel,metrics,jemalloc,unprotected"$}{FEATURES="parallel,metrics,jemalloc,unprotected,powdr-openvm/lean-optimizer,powdr-openvm-riscv/lean-optimizer"}' openvm-eth/run.sh
-          grep -q 'lean-optimizer' openvm-eth/run.sh || { echo "failed to patch openvm-eth FEATURES for lean-optimizer"; exit 1; }
 
       - name: Run reth benchmark (GPU)
         run: |
@@ -604,19 +600,19 @@ jobs:
           rm -rf apc-cache
 
           # prove with no APCs
-          ./run.sh --cuda --block 24171377 --apc 0 --mode prove-stark || exit 1
+          ./run.sh --lean-optimizer --cuda --block 24171377 --apc 0 --mode prove-stark || exit 1
           echo "Finished proving with no APCs"
           mv metrics.json $RES_DIR/apc000.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc000.png $RES_DIR/apc000.json > $RES_DIR/trace_cells_apc000.txt
 
           # prove with 10 APCs
-          ./run.sh --cuda --block 24171377 --apc 10 --mode prove-stark || exit 1
+          ./run.sh --lean-optimizer --cuda --block 24171377 --apc 10 --mode prove-stark || exit 1
           echo "Finished proving with 10 APCs"
           mv metrics.json $RES_DIR/apc010.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc010.png $RES_DIR/apc010.json > $RES_DIR/trace_cells_apc010.txt
 
           # prove with 30 APCs
-          ./run.sh --cuda --block 24171377 --apc 30 --mode prove-stark || exit 1
+          ./run.sh --lean-optimizer --cuda --block 24171377 --apc 30 --mode prove-stark || exit 1
           echo "Finished proving with 30 APCs"
           mv metrics.json $RES_DIR/apc030.json
           python ../openvm-riscv/scripts/plot_trace_cells.py -o $RES_DIR/trace_cells_apc030.png $RES_DIR/apc030.json > $RES_DIR/trace_cells_apc030.txt
