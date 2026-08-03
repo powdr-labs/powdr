@@ -30,6 +30,21 @@ extern "C" {
     fn apc_optimizer_free(p: *mut c_char);
 }
 
+/// The stack size to run the Lean entry point on: 1 GiB, the same that Lean's own runtime gives
+/// `main` (`lean::lthread::m_thread_stack_size`), overridable through Lean's own
+/// `LEAN_STACK_SIZE_KB`.
+///
+/// Lean-compiled code recurses over its data structures — the optimizer's entry encoding walks the
+/// constraint list with one frame per constraint, and several passes are structured the same way —
+/// so the depth grows with the size of the APC and a large machine overflows the few MiB a Rust
+/// thread gets. Reserving 1 GiB costs address space only: pages are committed as they are touched.
+fn lean_stack_size() -> usize {
+    std::env::var("LEAN_STACK_SIZE_KB")
+        .ok()
+        .and_then(|kb| kb.trim().parse::<usize>().ok())
+        .map_or(1 << 30, |kb| kb * 1024)
+}
+
 /// Run the apc-optimizer on a powdr APC export JSON string.
 ///
 /// `vm` selects the target VM (and thus the field) apc-optimizer parses and optimizes over;
@@ -39,7 +54,31 @@ extern "C" {
 /// Returns the optimized `SymbolicMachine` JSON on success. Returns `Err` if the input contains
 /// interior NUL bytes, if the Lean side reports a parse error (`{"error": ...}`), or if the
 /// returned bytes are not valid UTF-8.
+///
+/// The Lean call runs on a dedicated thread with a large stack (see `lean_stack_size`) and blocks
+/// until it finishes.
 pub fn optimize_json(
+    vm: KnownVm,
+    degree_identities: u64,
+    degree_bus_interactions: u64,
+    input: &str,
+) -> Result<String, String> {
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("apc-optimizer".into())
+            .stack_size(lean_stack_size())
+            .spawn_scoped(scope, || {
+                optimize_json_on_this_thread(vm, degree_identities, degree_bus_interactions, input)
+            })
+            .map_err(|e| format!("spawning the apc-optimizer thread failed: {e}"))?
+            .join()
+            // Propagate a panic in the Lean call to the caller as if it had happened here.
+            .unwrap_or_else(|payload| std::panic::resume_unwind(payload))
+    })
+}
+
+/// [`optimize_json`], but on the calling thread — which must have a Lean-sized stack.
+fn optimize_json_on_this_thread(
     vm: KnownVm,
     degree_identities: u64,
     degree_bus_interactions: u64,

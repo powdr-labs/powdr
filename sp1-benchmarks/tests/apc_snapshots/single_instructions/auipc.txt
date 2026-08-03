@@ -2,9 +2,9 @@ Instructions:
     0: auipc      %x1        0          74565     
 
 APC advantage:
-  - Main columns: 31 -> 10 (3.10x reduction)
+  - Main columns: 32 -> 10 (3.20x reduction)
   - Bus interactions: 13 -> 7 (1.86x reduction)
-  - Constraints: 20 -> 1 (20.00x reduction)
+  - Constraints: 21 -> 1 (21.00x reduction)
 
 Symbolic machine using 10 unique main columns:
   state__clk_high_0
