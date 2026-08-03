@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785713871145,
+  "lastUpdate": 1785774502831,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417349,6 +417349,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 40254887795,
             "range": "± 582965670",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Leo Alt",
+            "username": "leonardoalt",
+            "email": "leo@powdrlabs.com"
+          },
+          "committer": {
+            "name": "Leo Alt",
+            "username": "leonardoalt",
+            "email": "leo@powdrlabs.com"
+          },
+          "id": "3f3f033c54afa0a4e2519bd24798269fa7c5eacf",
+          "message": "ci: drop the Modal GPU prove from the nightly reth bench\n\nThe Modal side of `test_apc_reth` produced nothing useful, so remove it\nand everything that only existed to feed it:\n\n- the `Upload caches to Modal Volume`, `Run prove-stark on Modal`,\n  `Download Modal outputs and post-process` and `Cleanup Modal Volume`\n  steps, plus `pip install modal` and the `RUN_ID` / `MODAL_VOLUME` env\n- `Prefetch RPC cache (CPU)` (`--mode execute` only warmed the rpc-cache\n  tarball Modal restored) and `Compile APC caches (CPU)` (built the\n  apc-cache tarball for Modal; the CPU prove-stark loop runs the staged\n  generate->select->setup pipeline itself). The `.env` RPC_1 write and\n  the one-time `rm -rf apc-cache` move into the bench step, which keeps\n  the \"wipe once, reuse the generate blob across apc counts\" semantics.\n- `gpu_bench/modal_app.py`, now unreferenced\n\nThe CPU reth bench (apcs {0,3,10,30,100} -> results/reth/) and the\nself-hosted `test_apc_gpu` job are unchanged.\n\nCo-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-08-03T16:06:52Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/3f3f033c54afa0a4e2519bd24798269fa7c5eacf"
+        },
+        "date": 1785774492389,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 20944587768,
+            "range": "± 855652587",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 40939306082,
+            "range": "± 1052605735",
             "unit": "ns/iter"
           }
         ]
