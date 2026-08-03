@@ -5,14 +5,12 @@ Instructions:
     3: xor        %x11       %x12       %x11      
 
 APC advantage:
-  - Main columns: 208 -> 113 (1.84x reduction)
+  - Main columns: 208 -> 105 (1.98x reduction)
   - Bus interactions: 100 -> 65 (1.54x reduction)
   - Constraints: 88 -> 1 (88.00x reduction)
 
-Symbolic machine using 113 unique main columns:
-  state__clk_high_0
+Symbolic machine using 105 unique main columns:
   state__clk_16_24_0
-  state__clk_0_16_0
   adapter__op_a_memory__prev_value__0__0_0
   adapter__op_a_memory__prev_value__0__1_0
   adapter__op_a_memory__prev_value__0__2_0
@@ -48,10 +46,11 @@ Symbolic machine using 113 unique main columns:
   bitwise_operation__bitwise_operation__result__6_0
   bitwise_operation__bitwise_operation__result__7_0
   state__clk_16_24_1
-  adapter__op_a_memory__prev_value__0__0_1
-  adapter__op_a_memory__prev_value__0__1_1
-  adapter__op_a_memory__prev_value__0__2_1
-  adapter__op_a_memory__prev_value__0__3_1
+  state__clk_0_16_1
+  adapter__op_b_memory__prev_value__0__0_1
+  adapter__op_b_memory__prev_value__0__1_1
+  adapter__op_b_memory__prev_value__0__2_1
+  adapter__op_b_memory__prev_value__0__3_1
   adapter__op_b_memory__access_timestamp__prev_low_1
   adapter__op_b_memory__access_timestamp__diff_low_limb_1
   adapter__op_c_memory__prev_value__0__0_1
@@ -76,6 +75,7 @@ Symbolic machine using 113 unique main columns:
   bitwise_operation__bitwise_operation__result__5_1
   bitwise_operation__bitwise_operation__result__6_1
   bitwise_operation__bitwise_operation__result__7_1
+  state__clk_high_2
   state__clk_16_24_2
   adapter__op_b_memory__prev_value__0__0_2
   adapter__op_b_memory__prev_value__0__1_2
@@ -106,14 +106,6 @@ Symbolic machine using 113 unique main columns:
   bitwise_operation__bitwise_operation__result__6_2
   bitwise_operation__bitwise_operation__result__7_2
   state__clk_16_24_3
-  bitwise_operation__b_low_bytes__low_bytes__0_3
-  bitwise_operation__b_low_bytes__low_bytes__1_3
-  bitwise_operation__b_low_bytes__low_bytes__2_3
-  bitwise_operation__b_low_bytes__low_bytes__3_3
-  bitwise_operation__c_low_bytes__low_bytes__0_3
-  bitwise_operation__c_low_bytes__low_bytes__1_3
-  bitwise_operation__c_low_bytes__low_bytes__2_3
-  bitwise_operation__c_low_bytes__low_bytes__3_3
   bitwise_operation__bitwise_operation__result__0_3
   bitwise_operation__bitwise_operation__result__1_3
   bitwise_operation__bitwise_operation__result__2_3
@@ -125,75 +117,75 @@ Symbolic machine using 113 unique main columns:
   is_valid
 
 // Bus 1 (MEMORY):
-mult=is_valid, args=[state__clk_high_0, adapter__op_c_memory__access_timestamp__prev_low_0, 19, 0, 0, adapter__op_c_memory__prev_value__0__0_0, adapter__op_c_memory__prev_value__0__1_0, adapter__op_c_memory__prev_value__0__2_0, adapter__op_c_memory__prev_value__0__3_0]
-mult=-is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 2, 19, 0, 0, adapter__op_c_memory__prev_value__0__0_0, adapter__op_c_memory__prev_value__0__1_0, adapter__op_c_memory__prev_value__0__2_0, adapter__op_c_memory__prev_value__0__3_0]
-mult=is_valid, args=[state__clk_high_0, adapter__op_b_memory__access_timestamp__prev_low_0, 18, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
-mult=-is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 3, 18, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
-mult=is_valid, args=[state__clk_high_0, adapter__op_a_memory__access_timestamp__prev_low_0, 12, 0, 0, adapter__op_a_memory__prev_value__0__0_0, adapter__op_a_memory__prev_value__0__1_0, adapter__op_a_memory__prev_value__0__2_0, adapter__op_a_memory__prev_value__0__3_0]
-mult=is_valid, args=[state__clk_high_0, adapter__op_c_memory__access_timestamp__prev_low_1, 11, 0, 0, adapter__op_c_memory__prev_value__0__0_1, adapter__op_c_memory__prev_value__0__1_1, adapter__op_c_memory__prev_value__0__2_1, adapter__op_c_memory__prev_value__0__3_1]
-mult=is_valid, args=[state__clk_high_0, adapter__op_b_memory__access_timestamp__prev_low_1, 10, 0, 0, adapter__op_a_memory__prev_value__0__0_1, adapter__op_a_memory__prev_value__0__1_1, adapter__op_a_memory__prev_value__0__2_1, adapter__op_a_memory__prev_value__0__3_1]
-mult=-is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 12, 10, 0, 0, bitwise_operation__bitwise_operation__result__0_1 + 256 * bitwise_operation__bitwise_operation__result__1_1, bitwise_operation__bitwise_operation__result__2_1 + 256 * bitwise_operation__bitwise_operation__result__3_1, bitwise_operation__bitwise_operation__result__4_1 + 256 * bitwise_operation__bitwise_operation__result__5_1, bitwise_operation__bitwise_operation__result__6_1 + 256 * bitwise_operation__bitwise_operation__result__7_1]
-mult=is_valid, args=[state__clk_high_0, adapter__op_c_memory__access_timestamp__prev_low_2, 25, 0, 0, adapter__op_c_memory__prev_value__0__0_2, adapter__op_c_memory__prev_value__0__1_2, adapter__op_c_memory__prev_value__0__2_2, adapter__op_c_memory__prev_value__0__3_2]
-mult=-is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 18, 25, 0, 0, adapter__op_c_memory__prev_value__0__0_2, adapter__op_c_memory__prev_value__0__1_2, adapter__op_c_memory__prev_value__0__2_2, adapter__op_c_memory__prev_value__0__3_2]
-mult=is_valid, args=[state__clk_high_0, adapter__op_b_memory__access_timestamp__prev_low_2, 20, 0, 0, adapter__op_b_memory__prev_value__0__0_2, adapter__op_b_memory__prev_value__0__1_2, adapter__op_b_memory__prev_value__0__2_2, adapter__op_b_memory__prev_value__0__3_2]
-mult=-is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 19, 20, 0, 0, adapter__op_b_memory__prev_value__0__0_2, adapter__op_b_memory__prev_value__0__1_2, adapter__op_b_memory__prev_value__0__2_2, adapter__op_b_memory__prev_value__0__3_2]
-mult=-is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 27, 12, 0, 0, bitwise_operation__bitwise_operation__result__0_0 + 256 * bitwise_operation__bitwise_operation__result__1_0, bitwise_operation__bitwise_operation__result__2_0 + 256 * bitwise_operation__bitwise_operation__result__3_0, bitwise_operation__bitwise_operation__result__4_0 + 256 * bitwise_operation__bitwise_operation__result__5_0, bitwise_operation__bitwise_operation__result__6_0 + 256 * bitwise_operation__bitwise_operation__result__7_0]
-mult=-is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 28, 11, 0, 0, bitwise_operation__bitwise_operation__result__0_3 + 256 * bitwise_operation__bitwise_operation__result__1_3, bitwise_operation__bitwise_operation__result__2_3 + 256 * bitwise_operation__bitwise_operation__result__3_3, bitwise_operation__bitwise_operation__result__4_3 + 256 * bitwise_operation__bitwise_operation__result__5_3, bitwise_operation__bitwise_operation__result__6_3 + 256 * bitwise_operation__bitwise_operation__result__7_3]
+mult=is_valid, args=[state__clk_high_2, adapter__op_c_memory__access_timestamp__prev_low_0, 19, 0, 0, adapter__op_c_memory__prev_value__0__0_0, adapter__op_c_memory__prev_value__0__1_0, adapter__op_c_memory__prev_value__0__2_0, adapter__op_c_memory__prev_value__0__3_0]
+mult=-is_valid, args=[state__clk_high_2, 2130706427 + state__clk_0_16_1 + 65536 * state__clk_16_24_1, 19, 0, 0, adapter__op_c_memory__prev_value__0__0_0, adapter__op_c_memory__prev_value__0__1_0, adapter__op_c_memory__prev_value__0__2_0, adapter__op_c_memory__prev_value__0__3_0]
+mult=is_valid, args=[state__clk_high_2, adapter__op_b_memory__access_timestamp__prev_low_0, 18, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
+mult=-is_valid, args=[state__clk_high_2, 2130706428 + state__clk_0_16_1 + 65536 * state__clk_16_24_1, 18, 0, 0, adapter__op_b_memory__prev_value__0__0_0, adapter__op_b_memory__prev_value__0__1_0, adapter__op_b_memory__prev_value__0__2_0, adapter__op_b_memory__prev_value__0__3_0]
+mult=is_valid, args=[state__clk_high_2, adapter__op_a_memory__access_timestamp__prev_low_0, 12, 0, 0, adapter__op_a_memory__prev_value__0__0_0, adapter__op_a_memory__prev_value__0__1_0, adapter__op_a_memory__prev_value__0__2_0, adapter__op_a_memory__prev_value__0__3_0]
+mult=is_valid, args=[state__clk_high_2, adapter__op_c_memory__access_timestamp__prev_low_1, 11, 0, 0, adapter__op_c_memory__prev_value__0__0_1, adapter__op_c_memory__prev_value__0__1_1, adapter__op_c_memory__prev_value__0__2_1, adapter__op_c_memory__prev_value__0__3_1]
+mult=is_valid, args=[state__clk_high_2, adapter__op_b_memory__access_timestamp__prev_low_1, 10, 0, 0, adapter__op_b_memory__prev_value__0__0_1, adapter__op_b_memory__prev_value__0__1_1, adapter__op_b_memory__prev_value__0__2_1, adapter__op_b_memory__prev_value__0__3_1]
+mult=-is_valid, args=[state__clk_high_2, 4 + state__clk_0_16_1 + 65536 * state__clk_16_24_1, 10, 0, 0, bitwise_operation__bitwise_operation__result__0_1 + 256 * bitwise_operation__bitwise_operation__result__1_1, bitwise_operation__bitwise_operation__result__2_1 + 256 * bitwise_operation__bitwise_operation__result__3_1, bitwise_operation__bitwise_operation__result__4_1 + 256 * bitwise_operation__bitwise_operation__result__5_1, bitwise_operation__bitwise_operation__result__6_1 + 256 * bitwise_operation__bitwise_operation__result__7_1]
+mult=is_valid, args=[state__clk_high_2, adapter__op_c_memory__access_timestamp__prev_low_2, 25, 0, 0, adapter__op_c_memory__prev_value__0__0_2, adapter__op_c_memory__prev_value__0__1_2, adapter__op_c_memory__prev_value__0__2_2, adapter__op_c_memory__prev_value__0__3_2]
+mult=-is_valid, args=[state__clk_high_2, 10 + state__clk_0_16_1 + 65536 * state__clk_16_24_1, 25, 0, 0, adapter__op_c_memory__prev_value__0__0_2, adapter__op_c_memory__prev_value__0__1_2, adapter__op_c_memory__prev_value__0__2_2, adapter__op_c_memory__prev_value__0__3_2]
+mult=is_valid, args=[state__clk_high_2, adapter__op_b_memory__access_timestamp__prev_low_2, 20, 0, 0, adapter__op_b_memory__prev_value__0__0_2, adapter__op_b_memory__prev_value__0__1_2, adapter__op_b_memory__prev_value__0__2_2, adapter__op_b_memory__prev_value__0__3_2]
+mult=-is_valid, args=[state__clk_high_2, 11 + state__clk_0_16_1 + 65536 * state__clk_16_24_1, 20, 0, 0, adapter__op_b_memory__prev_value__0__0_2, adapter__op_b_memory__prev_value__0__1_2, adapter__op_b_memory__prev_value__0__2_2, adapter__op_b_memory__prev_value__0__3_2]
+mult=-is_valid, args=[state__clk_high_2, 19 + state__clk_0_16_1 + 65536 * state__clk_16_24_1, 12, 0, 0, bitwise_operation__bitwise_operation__result__0_0 + 256 * bitwise_operation__bitwise_operation__result__1_0, bitwise_operation__bitwise_operation__result__2_0 + 256 * bitwise_operation__bitwise_operation__result__3_0, bitwise_operation__bitwise_operation__result__4_0 + 256 * bitwise_operation__bitwise_operation__result__5_0, bitwise_operation__bitwise_operation__result__6_0 + 256 * bitwise_operation__bitwise_operation__result__7_0]
+mult=-is_valid, args=[state__clk_high_2, 20 + state__clk_0_16_1 + 65536 * state__clk_16_24_1, 11, 0, 0, bitwise_operation__bitwise_operation__result__0_3 + 256 * bitwise_operation__bitwise_operation__result__1_3, bitwise_operation__bitwise_operation__result__2_3 + 256 * bitwise_operation__bitwise_operation__result__3_3, bitwise_operation__bitwise_operation__result__4_3 + 256 * bitwise_operation__bitwise_operation__result__5_3, bitwise_operation__bitwise_operation__result__6_3 + 256 * bitwise_operation__bitwise_operation__result__7_3]
 
 // Bus 5 (BYTE):
 mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__0_0, bitwise_operation__b_low_bytes__low_bytes__0_0, bitwise_operation__c_low_bytes__low_bytes__0_0]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__1_0, 8323072 * bitwise_operation__b_low_bytes__low_bytes__0_0 - 8323072 * adapter__op_b_memory__prev_value__0__0_0, 8323072 * bitwise_operation__c_low_bytes__low_bytes__0_0 - 8323072 * adapter__op_c_memory__prev_value__0__0_0]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__1_0, 2122383361 * adapter__op_b_memory__prev_value__0__0_0 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__0_0, 2122383361 * adapter__op_c_memory__prev_value__0__0_0 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__0_0]
 mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__2_0, bitwise_operation__b_low_bytes__low_bytes__1_0, bitwise_operation__c_low_bytes__low_bytes__1_0]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__3_0, 8323072 * bitwise_operation__b_low_bytes__low_bytes__1_0 - 8323072 * adapter__op_b_memory__prev_value__0__1_0, 8323072 * bitwise_operation__c_low_bytes__low_bytes__1_0 - 8323072 * adapter__op_c_memory__prev_value__0__1_0]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__3_0, 2122383361 * adapter__op_b_memory__prev_value__0__1_0 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__1_0, 2122383361 * adapter__op_c_memory__prev_value__0__1_0 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__1_0]
 mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__4_0, bitwise_operation__b_low_bytes__low_bytes__2_0, bitwise_operation__c_low_bytes__low_bytes__2_0]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__5_0, 8323072 * bitwise_operation__b_low_bytes__low_bytes__2_0 - 8323072 * adapter__op_b_memory__prev_value__0__2_0, 8323072 * bitwise_operation__c_low_bytes__low_bytes__2_0 - 8323072 * adapter__op_c_memory__prev_value__0__2_0]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__5_0, 2122383361 * adapter__op_b_memory__prev_value__0__2_0 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__2_0, 2122383361 * adapter__op_c_memory__prev_value__0__2_0 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__2_0]
 mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__6_0, bitwise_operation__b_low_bytes__low_bytes__3_0, bitwise_operation__c_low_bytes__low_bytes__3_0]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__7_0, 8323072 * bitwise_operation__b_low_bytes__low_bytes__3_0 - 8323072 * adapter__op_b_memory__prev_value__0__3_0, 8323072 * bitwise_operation__c_low_bytes__low_bytes__3_0 - 8323072 * adapter__op_c_memory__prev_value__0__3_0]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__0_1, bitwise_operation__b_low_bytes__low_bytes__0_1, bitwise_operation__c_low_bytes__low_bytes__0_1]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__1_1, 8323072 * bitwise_operation__b_low_bytes__low_bytes__0_1 - 8323072 * adapter__op_a_memory__prev_value__0__0_1, 8323072 * bitwise_operation__c_low_bytes__low_bytes__0_1 - 8323072 * adapter__op_c_memory__prev_value__0__0_1]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__2_1, bitwise_operation__b_low_bytes__low_bytes__1_1, bitwise_operation__c_low_bytes__low_bytes__1_1]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__3_1, 8323072 * bitwise_operation__b_low_bytes__low_bytes__1_1 - 8323072 * adapter__op_a_memory__prev_value__0__1_1, 8323072 * bitwise_operation__c_low_bytes__low_bytes__1_1 - 8323072 * adapter__op_c_memory__prev_value__0__1_1]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__4_1, bitwise_operation__b_low_bytes__low_bytes__2_1, bitwise_operation__c_low_bytes__low_bytes__2_1]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__5_1, 8323072 * bitwise_operation__b_low_bytes__low_bytes__2_1 - 8323072 * adapter__op_a_memory__prev_value__0__2_1, 8323072 * bitwise_operation__c_low_bytes__low_bytes__2_1 - 8323072 * adapter__op_c_memory__prev_value__0__2_1]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__6_1, bitwise_operation__b_low_bytes__low_bytes__3_1, bitwise_operation__c_low_bytes__low_bytes__3_1]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__7_1, 8323072 * bitwise_operation__b_low_bytes__low_bytes__3_1 - 8323072 * adapter__op_a_memory__prev_value__0__3_1, 8323072 * bitwise_operation__c_low_bytes__low_bytes__3_1 - 8323072 * adapter__op_c_memory__prev_value__0__3_1]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__0_2, bitwise_operation__b_low_bytes__low_bytes__0_2, bitwise_operation__c_low_bytes__low_bytes__0_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__1_2, 8323072 * bitwise_operation__b_low_bytes__low_bytes__0_2 - 8323072 * adapter__op_b_memory__prev_value__0__0_2, 8323072 * bitwise_operation__c_low_bytes__low_bytes__0_2 - 8323072 * adapter__op_c_memory__prev_value__0__0_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__2_2, bitwise_operation__b_low_bytes__low_bytes__1_2, bitwise_operation__c_low_bytes__low_bytes__1_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__3_2, 8323072 * bitwise_operation__b_low_bytes__low_bytes__1_2 - 8323072 * adapter__op_b_memory__prev_value__0__1_2, 8323072 * bitwise_operation__c_low_bytes__low_bytes__1_2 - 8323072 * adapter__op_c_memory__prev_value__0__1_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__4_2, bitwise_operation__b_low_bytes__low_bytes__2_2, bitwise_operation__c_low_bytes__low_bytes__2_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__5_2, 8323072 * bitwise_operation__b_low_bytes__low_bytes__2_2 - 8323072 * adapter__op_b_memory__prev_value__0__2_2, 8323072 * bitwise_operation__c_low_bytes__low_bytes__2_2 - 8323072 * adapter__op_c_memory__prev_value__0__2_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__6_2, bitwise_operation__b_low_bytes__low_bytes__3_2, bitwise_operation__c_low_bytes__low_bytes__3_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__7_2, 8323072 * bitwise_operation__b_low_bytes__low_bytes__3_2 - 8323072 * adapter__op_b_memory__prev_value__0__3_2, 8323072 * bitwise_operation__c_low_bytes__low_bytes__3_2 - 8323072 * adapter__op_c_memory__prev_value__0__3_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__0_3, bitwise_operation__b_low_bytes__low_bytes__0_3, bitwise_operation__c_low_bytes__low_bytes__0_3]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__1_3, bitwise_operation__bitwise_operation__result__1_0 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__0_3 - 8323072 * bitwise_operation__bitwise_operation__result__0_0, bitwise_operation__bitwise_operation__result__1_2 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__0_3 - 8323072 * bitwise_operation__bitwise_operation__result__0_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__2_3, bitwise_operation__b_low_bytes__low_bytes__1_3, bitwise_operation__c_low_bytes__low_bytes__1_3]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__3_3, bitwise_operation__bitwise_operation__result__3_0 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__1_3 - 8323072 * bitwise_operation__bitwise_operation__result__2_0, bitwise_operation__bitwise_operation__result__3_2 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__1_3 - 8323072 * bitwise_operation__bitwise_operation__result__2_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__4_3, bitwise_operation__b_low_bytes__low_bytes__2_3, bitwise_operation__c_low_bytes__low_bytes__2_3]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__5_3, bitwise_operation__bitwise_operation__result__5_0 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__2_3 - 8323072 * bitwise_operation__bitwise_operation__result__4_0, bitwise_operation__bitwise_operation__result__5_2 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__2_3 - 8323072 * bitwise_operation__bitwise_operation__result__4_2]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__6_3, bitwise_operation__b_low_bytes__low_bytes__3_3, bitwise_operation__c_low_bytes__low_bytes__3_3]
-mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__7_3, bitwise_operation__bitwise_operation__result__7_0 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__3_3 - 8323072 * bitwise_operation__bitwise_operation__result__6_0, bitwise_operation__bitwise_operation__result__7_2 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__3_3 - 8323072 * bitwise_operation__bitwise_operation__result__6_2]
-mult=is_valid, args=[3, 0, state__clk_16_24_0, state__clk_16_24_0 + 32512 * adapter__op_a_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_a_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 97536)]
-mult=is_valid, args=[3, 0, state__clk_16_24_0 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 65024), state__clk_16_24_0 + 32512 * adapter__op_c_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_c_memory__access_timestamp__diff_low_limb_0 - (32512 * state__clk_0_16_0 + 32512)]
-mult=is_valid, args=[3, 0, state__clk_16_24_1, state__clk_16_24_0 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_1 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_1 - (32512 * state__clk_0_16_0 + 325120)]
-mult=is_valid, args=[3, 0, state__clk_16_24_0 + 32512 * adapter__op_c_memory__access_timestamp__prev_low_1 + 32512 * adapter__op_c_memory__access_timestamp__diff_low_limb_1 - (32512 * state__clk_0_16_0 + 292608), state__clk_16_24_2]
-mult=is_valid, args=[3, 0, state__clk_16_24_0 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_2 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_2 - (32512 * state__clk_0_16_0 + 585216), state__clk_16_24_0 + 32512 * adapter__op_c_memory__access_timestamp__prev_low_2 + 32512 * adapter__op_c_memory__access_timestamp__diff_low_limb_2 - (32512 * state__clk_0_16_0 + 552704)]
-mult=is_valid, args=[3, 0, state__clk_16_24_3, 0]
-mult=is_valid, args=[6, 266338304 - 266338304 * state__clk_0_16_0, 13, 0]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__7_0, 2122383361 * adapter__op_b_memory__prev_value__0__3_0 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__3_0, 2122383361 * adapter__op_c_memory__prev_value__0__3_0 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__3_0]
+mult=is_valid, args=[6, 266338303 + 1864368129 * state__clk_0_16_1 + 8192 * state__clk_16_24_1 + 2130698241 * state__clk_16_24_0, 13, 0]
+mult=is_valid, args=[3, 0, state__clk_16_24_0, 162560 + 2130673921 * state__clk_0_16_1 + state__clk_16_24_1 + 32512 * adapter__op_a_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_a_memory__access_timestamp__diff_low_limb_0]
 mult=is_valid, args=[6, adapter__op_a_memory__access_timestamp__diff_low_limb_0, 16, 0]
 mult=is_valid, args=[6, adapter__op_b_memory__access_timestamp__diff_low_limb_0, 16, 0]
+mult=is_valid, args=[3, 0, 195072 + 2130673921 * state__clk_0_16_1 + state__clk_16_24_1 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_0, 227584 + 2130673921 * state__clk_0_16_1 + state__clk_16_24_1 + 32512 * adapter__op_c_memory__access_timestamp__prev_low_0 + 32512 * adapter__op_c_memory__access_timestamp__diff_low_limb_0]
 mult=is_valid, args=[6, adapter__op_c_memory__access_timestamp__diff_low_limb_0, 16, 0]
-mult=is_valid, args=[6, 8192 * state__clk_16_24_0 + 266338305 - (266338304 * state__clk_0_16_0 + 8192 * state__clk_16_24_1), 13, 0]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__0_1, bitwise_operation__b_low_bytes__low_bytes__0_1, bitwise_operation__c_low_bytes__low_bytes__0_1]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__1_1, 2122383361 * adapter__op_b_memory__prev_value__0__0_1 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__0_1, 2122383361 * adapter__op_c_memory__prev_value__0__0_1 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__0_1]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__2_1, bitwise_operation__b_low_bytes__low_bytes__1_1, bitwise_operation__c_low_bytes__low_bytes__1_1]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__3_1, 2122383361 * adapter__op_b_memory__prev_value__0__1_1 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__1_1, 2122383361 * adapter__op_c_memory__prev_value__0__1_1 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__1_1]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__4_1, bitwise_operation__b_low_bytes__low_bytes__2_1, bitwise_operation__c_low_bytes__low_bytes__2_1]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__5_1, 2122383361 * adapter__op_b_memory__prev_value__0__2_1 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__2_1, 2122383361 * adapter__op_c_memory__prev_value__0__2_1 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__2_1]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__6_1, bitwise_operation__b_low_bytes__low_bytes__3_1, bitwise_operation__c_low_bytes__low_bytes__3_1]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__7_1, 2122383361 * adapter__op_b_memory__prev_value__0__3_1 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__3_1, 2122383361 * adapter__op_c_memory__prev_value__0__3_1 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__3_1]
+mult=is_valid, args=[6, 266338304 + 1864368129 * state__clk_0_16_1, 13, 0]
+mult=is_valid, args=[3, 0, state__clk_16_24_1, 2130641409 + 2130673921 * state__clk_0_16_1 + state__clk_16_24_1 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_1 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_1]
 mult=is_valid, args=[6, adapter__op_b_memory__access_timestamp__diff_low_limb_1, 16, 0]
 mult=is_valid, args=[6, adapter__op_c_memory__access_timestamp__diff_low_limb_1, 16, 0]
-mult=is_valid, args=[6, 8192 * state__clk_16_24_0 + 266338306 - (266338304 * state__clk_0_16_0 + 8192 * state__clk_16_24_2), 13, 0]
+mult=is_valid, args=[3, 0, 2130673921 + 2130673921 * state__clk_0_16_1 + state__clk_16_24_1 + 32512 * adapter__op_c_memory__access_timestamp__prev_low_1 + 32512 * adapter__op_c_memory__access_timestamp__diff_low_limb_1, state__clk_16_24_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__0_2, bitwise_operation__b_low_bytes__low_bytes__0_2, bitwise_operation__c_low_bytes__low_bytes__0_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__1_2, 2122383361 * adapter__op_b_memory__prev_value__0__0_2 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__0_2, 2122383361 * adapter__op_c_memory__prev_value__0__0_2 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__0_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__2_2, bitwise_operation__b_low_bytes__low_bytes__1_2, bitwise_operation__c_low_bytes__low_bytes__1_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__3_2, 2122383361 * adapter__op_b_memory__prev_value__0__1_2 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__1_2, 2122383361 * adapter__op_c_memory__prev_value__0__1_2 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__1_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__4_2, bitwise_operation__b_low_bytes__low_bytes__2_2, bitwise_operation__c_low_bytes__low_bytes__2_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__5_2, 2122383361 * adapter__op_b_memory__prev_value__0__2_2 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__2_2, 2122383361 * adapter__op_c_memory__prev_value__0__2_2 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__2_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__6_2, bitwise_operation__b_low_bytes__low_bytes__3_2, bitwise_operation__c_low_bytes__low_bytes__3_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__7_2, 2122383361 * adapter__op_b_memory__prev_value__0__3_2 + 8323072 * bitwise_operation__b_low_bytes__low_bytes__3_2, 2122383361 * adapter__op_c_memory__prev_value__0__3_2 + 8323072 * bitwise_operation__c_low_bytes__low_bytes__3_2]
+mult=is_valid, args=[6, 266338305 + 2130698241 * state__clk_16_24_2 + 1864368129 * state__clk_0_16_1 + 8192 * state__clk_16_24_1, 13, 0]
 mult=is_valid, args=[6, adapter__op_b_memory__access_timestamp__diff_low_limb_2, 16, 0]
+mult=is_valid, args=[3, 0, 2130381313 + 2130673921 * state__clk_0_16_1 + state__clk_16_24_1 + 32512 * adapter__op_b_memory__access_timestamp__prev_low_2 + 32512 * adapter__op_b_memory__access_timestamp__diff_low_limb_2, 2130413825 + 2130673921 * state__clk_0_16_1 + state__clk_16_24_1 + 32512 * adapter__op_c_memory__access_timestamp__prev_low_2 + 32512 * adapter__op_c_memory__access_timestamp__diff_low_limb_2]
 mult=is_valid, args=[6, adapter__op_c_memory__access_timestamp__diff_low_limb_2, 16, 0]
-mult=is_valid, args=[6, 8192 * state__clk_16_24_0 + 266338307 - (266338304 * state__clk_0_16_0 + 8192 * state__clk_16_24_3), 13, 0]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__0_3, bitwise_operation__bitwise_operation__result__0_0, bitwise_operation__bitwise_operation__result__0_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__1_3, bitwise_operation__bitwise_operation__result__1_0, bitwise_operation__bitwise_operation__result__1_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__2_3, bitwise_operation__bitwise_operation__result__2_0, bitwise_operation__bitwise_operation__result__2_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__3_3, bitwise_operation__bitwise_operation__result__3_0, bitwise_operation__bitwise_operation__result__3_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__4_3, bitwise_operation__bitwise_operation__result__4_0, bitwise_operation__bitwise_operation__result__4_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__5_3, bitwise_operation__bitwise_operation__result__5_0, bitwise_operation__bitwise_operation__result__5_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__6_3, bitwise_operation__bitwise_operation__result__6_0, bitwise_operation__bitwise_operation__result__6_2]
+mult=is_valid, args=[2, bitwise_operation__bitwise_operation__result__7_3, bitwise_operation__bitwise_operation__result__7_0, bitwise_operation__bitwise_operation__result__7_2]
+mult=is_valid, args=[6, 266338306 + 2130698241 * state__clk_16_24_3 + 1864368129 * state__clk_0_16_1 + 8192 * state__clk_16_24_1, 13, 0]
+mult=is_valid, args=[2, 0, state__clk_16_24_3, state__clk_16_24_3]
 
 // Bus 7 (EXECUTION_BRIDGE):
-mult=-is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0, 0, 0, 0]
-mult=is_valid, args=[state__clk_high_0, 65536 * state__clk_16_24_0 + state__clk_0_16_0 + 32, 16, 0, 0]
+mult=-is_valid, args=[state__clk_high_2, 2130706425 + state__clk_0_16_1 + 65536 * state__clk_16_24_1, 0, 0, 0]
+mult=is_valid, args=[state__clk_high_2, 24 + state__clk_0_16_1 + 65536 * state__clk_16_24_1, 16, 0, 0]
 
 // Algebraic constraints:
 is_valid * (is_valid - 1) = 0
