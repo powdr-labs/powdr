@@ -18,7 +18,7 @@ use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::isa::{IsaApc, OpenVmISA};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
-use crate::powdr_extension::trace_generator::cache::{CachedApc, CachedApcCpu, CachedApcGpu};
+use crate::powdr_extension::trace_generator::cache::CachedApc;
 use crate::powdr_extension::PowdrOpcode;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
@@ -44,8 +44,6 @@ pub struct PowdrPrecompile<F, ISA: OpenVmISA> {
     pub name: String,
     pub opcode: PowdrOpcode,
     pub apc: CachedApc<F, ISA>,
-    pub apc_cpu: CachedApcCpu<F>,
-    pub apc_gpu: CachedApcGpu,
     pub apc_stats: OvmApcStats,
     #[serde(skip, default)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
@@ -58,16 +56,12 @@ impl<F, ISA: OpenVmISA> PowdrPrecompile<F, ISA> {
         name: String,
         opcode: PowdrOpcode,
         apc: CachedApc<F, ISA>,
-        apc_cpu: CachedApcCpu<F>,
-        apc_gpu: CachedApcGpu,
         apc_stats: OvmApcStats,
     ) -> Self {
         Self {
             name,
             opcode,
             apc,
-            apc_cpu,
-            apc_gpu,
             apc_stats,
             // Initialize with empty Rc (default to OriginalArenas::Uninitialized) for each APC
             apc_record_arena_cpu: Default::default(),
@@ -76,7 +70,7 @@ impl<F, ISA: OpenVmISA> PowdrPrecompile<F, ISA> {
     }
 
     pub fn raw_apc(&self) -> &IsaApc<F, ISA> {
-        &self.apc.apc
+        &self.apc.raw
     }
 }
 
@@ -116,7 +110,7 @@ impl<ISA: OpenVmISA> VmExecutionExtension<BabyBear> for PowdrExtension<BabyBear,
             let powdr_executor = PowdrExtensionExecutor::Powdr(PowdrExecutor::new(
                 self.airs.clone(),
                 self.base_config.clone(),
-                precompile.apc.apc.clone(),
+                precompile.apc.raw.clone(),
                 precompile.apc_record_arena_cpu.clone(),
                 precompile.apc_record_arena_gpu.clone(),
                 height_change,
@@ -135,7 +129,7 @@ where
 {
     fn extend_circuit(&self, inventory: &mut AirInventory<SC>) -> Result<(), AirInventoryError> {
         for precompile in &self.precompiles {
-            inventory.add_air(PowdrAir::new(precompile.apc.apc.machine.clone()));
+            inventory.add_air(PowdrAir::new(precompile.apc.raw.machine.clone()));
         }
         Ok(())
     }
