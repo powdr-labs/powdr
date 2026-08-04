@@ -11,55 +11,56 @@ use serde::{Deserialize, Serialize};
 use crate::isa::{IsaApc, OpenVmISA};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct CachedSubstitution {
+pub(crate) struct SubstitutionMeta {
     pub(crate) original_poly_index: usize,
     pub(crate) apc_poly_id: u64,
     pub(crate) apc_index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct CachedInstruction {
+pub(crate) struct InstructionMeta {
     pub(crate) air_name: String,
     pub(crate) occurrence_per_call: usize,
     pub(crate) table_offset: usize,
-    pub(crate) substitutions: Vec<CachedSubstitution>,
+    pub(crate) substitutions: Vec<SubstitutionMeta>,
 }
 
-/// Shared APC metadata reused by backend-specific trace generators.
+/// Backend-agnostic trace-generation metadata, derived once from an APC.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "F: Serialize", deserialize = "F: Deserialize<'de>"))]
-pub struct CachedApc<F, ISA: OpenVmISA> {
-    pub(crate) raw: IsaApc<F, ISA>,
+pub struct ApcTraceGenMeta {
     pub(crate) apc_poly_id_to_index: BTreeMap<u64, usize>,
-    pub(crate) instructions: Vec<CachedInstruction>,
+    pub(crate) instructions: Vec<InstructionMeta>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CachedInstructionCpu {
+pub(crate) struct CpuInstructionMeta {
     pub(crate) copy_pairs: Vec<(usize, usize)>,
 }
 
 #[derive(Clone)]
-pub struct CachedApcCpu<F> {
-    pub(crate) instructions: Vec<CachedInstructionCpu>,
+pub struct CpuTraceGenMeta<F> {
+    pub(crate) instructions: Vec<CpuInstructionMeta>,
     pub(crate) columns_to_compute: Vec<(usize, ResolvedMethod<F>)>,
 }
 
 #[cfg(feature = "cuda")]
 #[derive(Debug, Clone)]
-pub(crate) struct CachedGpuAir {
+pub(crate) struct GpuAirMeta {
     pub(crate) air_name: String,
     pub(crate) instruction_indices: Vec<usize>,
 }
 
 #[cfg(feature = "cuda")]
 #[derive(Clone)]
-pub struct CachedApcGpu {
-    pub(crate) airs: Vec<CachedGpuAir>,
+pub struct GpuTraceGenMeta {
+    pub(crate) airs: Vec<GpuAirMeta>,
 }
 
-impl<F: Clone, ISA: OpenVmISA> CachedApc<F, ISA> {
-    pub(crate) fn new(apc: IsaApc<F, ISA>, opcode_to_air: &HashMap<VmOpcode, String>) -> Self {
+impl ApcTraceGenMeta {
+    pub(crate) fn new<F, ISA: OpenVmISA>(
+        apc: &IsaApc<F, ISA>,
+        opcode_to_air: &HashMap<VmOpcode, String>,
+    ) -> Self {
         let apc_poly_id_to_index = apc
             .machine()
             .main_columns()
@@ -89,14 +90,14 @@ impl<F: Clone, ISA: OpenVmISA> CachedApc<F, ISA> {
 
             let substitutions = substitutions
                 .iter()
-                .map(|substitution| CachedSubstitution {
+                .map(|substitution| SubstitutionMeta {
                     original_poly_index: substitution.original_poly_index,
                     apc_poly_id: substitution.apc_poly_id,
                     apc_index: apc_poly_id_to_index.get(&substitution.apc_poly_id).copied(),
                 })
                 .collect();
 
-            instructions.push(CachedInstruction {
+            instructions.push(InstructionMeta {
                 air_name: air_name.clone(),
                 occurrence_per_call: air_name_occurrences[air_name],
                 table_offset,
@@ -105,7 +106,6 @@ impl<F: Clone, ISA: OpenVmISA> CachedApc<F, ISA> {
         }
 
         Self {
-            raw: apc,
             apc_poly_id_to_index,
             instructions,
         }
@@ -115,7 +115,7 @@ impl<F: Clone, ISA: OpenVmISA> CachedApc<F, ISA> {
         self.apc_poly_id_to_index.len()
     }
 
-    pub(crate) fn dummy_values<'a, M>(
+    pub(crate) fn dummy_values<'a, F, M>(
         &self,
         air_name_to_dummy_trace: &'a HashMap<String, M>,
         apc_call_count: usize,
@@ -148,12 +148,12 @@ impl<F: Clone, ISA: OpenVmISA> CachedApc<F, ISA> {
     }
 }
 
-impl<F: Clone> CachedApcCpu<F> {
-    pub(crate) fn new<ISA: OpenVmISA>(apc: &CachedApc<F, ISA>) -> Self {
-        let instructions = apc
+impl<F: Clone> CpuTraceGenMeta<F> {
+    pub(crate) fn new<ISA: OpenVmISA>(meta: &ApcTraceGenMeta, apc: &IsaApc<F, ISA>) -> Self {
+        let instructions = meta
             .instructions
             .iter()
-            .map(|instruction| CachedInstructionCpu {
+            .map(|instruction| CpuInstructionMeta {
                 copy_pairs: instruction
                     .substitutions
                     .iter()
@@ -166,7 +166,7 @@ impl<F: Clone> CachedApcCpu<F> {
             })
             .collect();
 
-        let apc_poly_id_to_dummy_index: BTreeMap<u64, DummyCoord> = apc
+        let apc_poly_id_to_dummy_index: BTreeMap<u64, DummyCoord> = meta
             .instructions
             .iter()
             .enumerate()
@@ -184,14 +184,13 @@ impl<F: Clone> CachedApcCpu<F> {
             .collect();
 
         let columns_to_compute = apc
-            .raw
             .machine()
             .derived_columns
             .iter()
             .filter(|d| d.is_new)
             .map(|d| {
                 (
-                    apc.apc_poly_id_to_index[&d.variable.id],
+                    meta.apc_poly_id_to_index[&d.variable.id],
                     resolve_computation_method(&d.computation_method, &apc_poly_id_to_dummy_index),
                 )
             })
@@ -205,17 +204,17 @@ impl<F: Clone> CachedApcCpu<F> {
 }
 
 #[cfg(feature = "cuda")]
-impl CachedApcGpu {
-    pub(crate) fn new<F, ISA: OpenVmISA>(apc: &CachedApc<F, ISA>) -> Self {
+impl GpuTraceGenMeta {
+    pub(crate) fn new(meta: &ApcTraceGenMeta) -> Self {
         let mut air_index_by_name = HashMap::<String, usize>::new();
-        let mut airs = Vec::<CachedGpuAir>::new();
+        let mut airs = Vec::<GpuAirMeta>::new();
 
-        for (instruction_index, instruction) in apc.instructions.iter().enumerate() {
+        for (instruction_index, instruction) in meta.instructions.iter().enumerate() {
             let next_index = airs.len();
             let air_index = *air_index_by_name
                 .entry(instruction.air_name.clone())
                 .or_insert_with(|| {
-                    airs.push(CachedGpuAir {
+                    airs.push(GpuAirMeta {
                         air_name: instruction.air_name.clone(),
                         instruction_indices: Vec::new(),
                     });

@@ -44,10 +44,11 @@ impl<ISA: OpenVmISA> PowdrChipCpu<ISA> {
         let PowdrPrecompile {
             name,
             apc,
+            trace_meta,
             apc_record_arena_cpu: apc_record_arena,
             ..
         } = precompile;
-        let trace_generator = PowdrTraceGeneratorCpu::new(apc, base_config, periphery);
+        let trace_generator = PowdrTraceGeneratorCpu::new(apc, trace_meta, base_config, periphery);
 
         Self {
             name,
@@ -161,10 +162,12 @@ mod cuda {
             let PowdrPrecompile {
                 name,
                 apc,
+                trace_meta,
                 apc_record_arena_gpu: apc_record_arena,
                 ..
             } = precompile;
-            let trace_generator = PowdrTraceGeneratorGpu::new(apc, base_config, periphery);
+            let trace_generator =
+                PowdrTraceGeneratorGpu::new(apc, trace_meta, base_config, periphery);
 
             Self {
                 name,

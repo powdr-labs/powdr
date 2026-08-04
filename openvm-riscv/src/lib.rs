@@ -539,14 +539,10 @@ mod tests {
             .precompiles
             .iter()
             .for_each(|precompile| {
-                assert!(!pgo_data.pc_count.keys().contains(
-                    &precompile
-                        .raw_apc()
-                        .block
-                        .try_as_basic_block()
-                        .unwrap()
-                        .start_pc
-                ));
+                assert!(!pgo_data
+                    .pc_count
+                    .keys()
+                    .contains(&precompile.apc.block.try_as_basic_block().unwrap().start_pc));
             });
 
         let result = prove(&program, false, false, stdin, None);

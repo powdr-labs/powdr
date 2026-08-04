@@ -21,7 +21,7 @@ use crate::{
     powdr_extension::{
         chip::PowdrChipCpu,
         executor::OriginalArenas,
-        trace_generator::cache::{CachedApc, CachedApcCpu},
+        trace_generator::metadata::{ApcTraceGenMeta, CpuTraceGenMeta},
     },
 };
 
@@ -73,36 +73,39 @@ impl<R, PB: ProverBackend<Matrix = RowMajorMatrix<BabyBear>>, ISA: OpenVmISA> Ch
 }
 
 pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
-    apc: CachedApc<BabyBear, ISA>,
-    apc_cpu: CachedApcCpu<BabyBear>,
+    apc: IsaApc<BabyBear, ISA>,
+    trace_meta: ApcTraceGenMeta,
+    cpu_meta: CpuTraceGenMeta<BabyBear>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesCpu<ISA>,
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
     pub(crate) fn new(
-        apc: CachedApc<BabyBear, ISA>,
+        apc: IsaApc<BabyBear, ISA>,
+        trace_meta: ApcTraceGenMeta,
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
-        let apc_cpu = CachedApcCpu::new(&apc);
+        let cpu_meta = CpuTraceGenMeta::new(&trace_meta, &apc);
         Self {
             apc,
-            apc_cpu,
+            trace_meta,
+            cpu_meta,
             config,
             periphery,
         }
     }
 
     pub fn apc(&self) -> &IsaApc<BabyBear, ISA> {
-        &self.apc.raw
+        &self.apc
     }
 
     pub fn generate_witness(
         &self,
         original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
     ) -> DenseMatrix<BabyBear> {
-        let width = self.apc.width();
+        let width = self.trace_meta.width();
 
         let mut original_arenas = match original_arenas {
             OriginalArenas::Initialized(arenas) => arenas,
@@ -149,7 +152,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             .collect();
 
         let dummy_values = self
-            .apc
+            .trace_meta
             .dummy_values(&dummy_trace_by_air_name, num_apc_calls);
 
         // allocate for apc trace
@@ -174,7 +177,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     .collect();
 
                 for (&dummy_row, instruction) in
-                    dummy_rows.iter().zip_eq(&self.apc_cpu.instructions)
+                    dummy_rows.iter().zip_eq(&self.cpu_meta.instructions)
                 {
                     for (dummy_trace_index, apc_index) in &instruction.copy_pairs {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
@@ -183,15 +186,15 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                 // Fill the computed columns (e.g. `is_valid`), each pre-resolved to its APC row
                 // index and a method reading its inputs from the dummy trace.
-                for (target_index, method) in &self.apc_cpu.columns_to_compute {
+                for (target_index, method) in &self.cpu_meta.columns_to_compute {
                     row_slice[*target_index] = evaluate_computation_method(method, &dummy_rows);
                 }
 
-                let evaluator = MappingRowEvaluator::new(row_slice, &self.apc.apc_poly_id_to_index);
+                let evaluator =
+                    MappingRowEvaluator::new(row_slice, &self.trace_meta.apc_poly_id_to_index);
 
                 // replay the side effects of this row on the main periphery
                 self.apc
-                    .raw
                     .machine()
                     .bus_interactions
                     .iter()
