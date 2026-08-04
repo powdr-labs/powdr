@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785800472776,
+  "lastUpdate": 1785886851106,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417417,6 +417417,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 40394674034,
             "range": "± 674259148",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Leo",
+            "username": "leonardoalt",
+            "email": "leo@powdrlabs.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "bf8ccd0786389ae8559c55536f15bca350883658",
+          "message": "ci: drop the Modal GPU prove from the nightly reth bench (#3813)\n\n## Summary\n\nThe Modal-hosted GPU prove in the nightly `test_apc_reth` job does\nnothing useful, so this removes it along with everything that only\nexisted to feed it.\n\nRemoved:\n- Steps `Upload caches to Modal Volume`, `Run prove-stark on Modal (best\neffort)`, `Download Modal outputs and post-process (best effort)`,\n`Cleanup Modal Volume`.\n- `pip install modal` from the venv setup, and the `RUN_ID` /\n`MODAL_VOLUME` job env vars (the `MODAL_TOKEN_*` secrets are no longer\nreferenced anywhere).\n- `Prefetch RPC cache (CPU)` — the `--mode execute` run only existed to\nbuild `rpc-cache.tgz` for Modal to restore.\n- `Compile APC caches (CPU)` — the `--mode compile` loop only existed to\nbuild `apc-cache.tgz` for Modal (plus the `apc_candidates_modal.json`\nsnapshot its post-processing consumed). The CPU prove-stark loop runs\nthe staged generate→select→setup pipeline itself.\n- `gpu_bench/modal_app.py`, now unreferenced.\n\nPreserved from the deleted steps: the `.env` `RPC_1` write and the\none-time `rm -rf apc-cache`, both folded into `Run reth benchmark`. That\nkeeps the current caching semantics — wipe once at job start, then let\nthe first prove build the `generate` blob and the later apc counts reuse\nit (no wiping between iterations).\n\nUnchanged: the CPU reth bench itself (apcs {0,3,10,30,100} →\n`results/reth/`), `publish_bench_results`, and the self-hosted\n`test_apc_gpu` job. Two stale comments referencing \"the Modal path\" were\nrewritten.\n\n## Test plan\n\n- [x] `nightly-tests.yml` parses; `test_apc_reth` is now checkout →\ncache → cargo-openvm → guest toolchain → venv → clean results →\npatch-openvm-eth → lean → run bench → upload.\n- [x] No `modal` / `gpu_bench` / `RUN_ID` / `MODAL_VOLUME` references\nleft under `.github/`.\n- [x] `bash -n` on the rewritten `Run reth benchmark` script.\n- [ ] `workflow_dispatch` a nightly run from this branch to confirm\n`test_apc_reth` still produces `results/reth/` end to end.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-08-04T11:24:12Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/bf8ccd0786389ae8559c55536f15bca350883658"
+        },
+        "date": 1785886840868,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 16505372994,
+            "range": "± 1138545243",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 41222907319,
+            "range": "± 219009786",
             "unit": "ns/iter"
           }
         ]
