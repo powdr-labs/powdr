@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
 
-use itertools::Itertools;
 use openvm_circuit::{
     arch::{ChipInventory, DenseRecordArena},
     utils::next_power_of_two_or_zero,
@@ -23,7 +22,7 @@ use powdr_expression::{AlgebraicBinaryOperator, AlgebraicUnaryOperator};
 use crate::{
     cuda_abi::{self, Cell, DerivedExprSpec, DevInteraction, ExprSpan, OpCode, OriginalAir, Subst},
     extraction_utils::OriginalVmConfig,
-    isa::{IsaApc, OpenVmISA},
+    isa::OpenVmISA,
     powdr_extension::{
         chip::PowdrChipGpu,
         executor::OriginalArenas,
@@ -240,10 +239,10 @@ pub struct PowdrTraceGeneratorGpu<ISA: OpenVmISA> {
 impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
     pub fn new(
         apc: CachedApc<BabyBear, ISA>,
-        apc_gpu: CachedApcGpu,
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesGpu<ISA>,
     ) -> Self {
+        let apc_gpu = CachedApcGpu::new(&apc);
         Self {
             apc,
             apc_gpu,
@@ -377,7 +376,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
         // Apply derived columns using the GPU expression evaluator, reading inputs directly from the
         // dummy traces (`airs`) so no removed column is staged in the committed buffer.
         let (derived_specs, derived_bc) = compile_derived_to_gpu(
-            &self.apc.apc.machine.derived_columns,
+            &self.apc.raw.machine.derived_columns,
             apc_poly_id_to_index,
             &cell_by_id,
             height,
@@ -389,7 +388,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorGpu<ISA> {
 
         // Encode bus interactions for GPU consumption
         let (bus_interactions, arg_spans, bytecode) = compile_bus_to_gpu(
-            &self.apc.apc.machine.bus_interactions,
+            &self.apc.raw.machine.bus_interactions,
             apc_poly_id_to_index,
             height,
         );

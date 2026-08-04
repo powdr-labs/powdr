@@ -29,31 +29,31 @@ pub(crate) struct CachedInstruction {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "F: Serialize", deserialize = "F: Deserialize<'de>"))]
 pub struct CachedApc<F, ISA: OpenVmISA> {
-    pub(crate) apc: IsaApc<F, ISA>,
+    pub(crate) raw: IsaApc<F, ISA>,
     pub(crate) apc_poly_id_to_index: BTreeMap<u64, usize>,
     pub(crate) instructions: Vec<CachedInstruction>,
-    pub(crate) apc_poly_id_to_dummy_index: BTreeMap<u64, DummyCoord>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub(crate) struct CachedInstructionCpu {
     pub(crate) copy_pairs: Vec<(usize, usize)>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "F: Serialize", deserialize = "F: Deserialize<'de>"))]
+#[derive(Clone)]
 pub struct CachedApcCpu<F> {
     pub(crate) instructions: Vec<CachedInstructionCpu>,
     pub(crate) columns_to_compute: Vec<(usize, ResolvedMethod<F>)>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(feature = "cuda")]
+#[derive(Debug, Clone)]
 pub(crate) struct CachedGpuAir {
     pub(crate) air_name: String,
     pub(crate) instruction_indices: Vec<usize>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[cfg(feature = "cuda")]
+#[derive(Clone)]
 pub struct CachedApcGpu {
     pub(crate) airs: Vec<CachedGpuAir>,
 }
@@ -81,31 +81,18 @@ impl<F: Clone, ISA: OpenVmISA> CachedApc<F, ISA> {
 
         let mut air_name_counts = HashMap::new();
         let mut instructions = Vec::with_capacity(instructions_with_subs.len());
-        let mut apc_poly_id_to_dummy_index = BTreeMap::new();
 
-        for (instruction_index, (air_name, substitutions)) in
-            instructions_with_subs.iter().enumerate()
-        {
+        for (air_name, substitutions) in instructions_with_subs.iter() {
             let count = air_name_counts.entry(air_name.clone()).or_default();
             let table_offset = *count;
             *count += 1;
 
             let substitutions = substitutions
                 .iter()
-                .map(|substitution| {
-                    apc_poly_id_to_dummy_index.insert(
-                        substitution.apc_poly_id,
-                        DummyCoord {
-                            instruction: instruction_index,
-                            index: substitution.original_poly_index,
-                        },
-                    );
-
-                    CachedSubstitution {
-                        original_poly_index: substitution.original_poly_index,
-                        apc_poly_id: substitution.apc_poly_id,
-                        apc_index: apc_poly_id_to_index.get(&substitution.apc_poly_id).copied(),
-                    }
+                .map(|substitution| CachedSubstitution {
+                    original_poly_index: substitution.original_poly_index,
+                    apc_poly_id: substitution.apc_poly_id,
+                    apc_index: apc_poly_id_to_index.get(&substitution.apc_poly_id).copied(),
                 })
                 .collect();
 
@@ -118,10 +105,9 @@ impl<F: Clone, ISA: OpenVmISA> CachedApc<F, ISA> {
         }
 
         Self {
-            apc,
+            raw: apc,
             apc_poly_id_to_index,
             instructions,
-            apc_poly_id_to_dummy_index,
         }
     }
 
@@ -180,8 +166,25 @@ impl<F: Clone> CachedApcCpu<F> {
             })
             .collect();
 
+        let apc_poly_id_to_dummy_index: BTreeMap<u64, DummyCoord> = apc
+            .instructions
+            .iter()
+            .enumerate()
+            .flat_map(|(instruction, cached)| {
+                cached.substitutions.iter().map(move |substitution| {
+                    (
+                        substitution.apc_poly_id,
+                        DummyCoord {
+                            instruction,
+                            index: substitution.original_poly_index,
+                        },
+                    )
+                })
+            })
+            .collect();
+
         let columns_to_compute = apc
-            .apc
+            .raw
             .machine()
             .derived_columns
             .iter()
@@ -189,10 +192,7 @@ impl<F: Clone> CachedApcCpu<F> {
             .map(|d| {
                 (
                     apc.apc_poly_id_to_index[&d.variable.id],
-                    resolve_computation_method(
-                        &d.computation_method,
-                        &apc.apc_poly_id_to_dummy_index,
-                    ),
+                    resolve_computation_method(&d.computation_method, &apc_poly_id_to_dummy_index),
                 )
             })
             .collect();
@@ -204,6 +204,7 @@ impl<F: Clone> CachedApcCpu<F> {
     }
 }
 
+#[cfg(feature = "cuda")]
 impl CachedApcGpu {
     pub(crate) fn new<F, ISA: OpenVmISA>(apc: &CachedApc<F, ISA>) -> Self {
         let mut air_index_by_name = HashMap::<String, usize>::new();

@@ -82,10 +82,10 @@ pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
 impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
     pub(crate) fn new(
         apc: CachedApc<BabyBear, ISA>,
-        apc_cpu: CachedApcCpu<BabyBear>,
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
+        let apc_cpu = CachedApcCpu::new(&apc);
         Self {
             apc,
             apc_cpu,
@@ -95,7 +95,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
     }
 
     pub fn apc(&self) -> &IsaApc<BabyBear, ISA> {
-        &self.apc.apc
+        &self.apc.raw
     }
 
     pub fn generate_witness(
@@ -191,7 +191,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                 // replay the side effects of this row on the main periphery
                 self.apc
-                    .apc
+                    .raw
                     .machine()
                     .bus_interactions
                     .iter()
