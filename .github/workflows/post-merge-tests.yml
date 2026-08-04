@@ -17,6 +17,9 @@ env:
   RUST_BACKTRACE: 1
   JEMALLOC_SYS_WITH_MALLOC_CONF: "retain:true,background_thread:true,metadata_thp:always,dirty_decay_ms:10000,muzzy_decay_ms:10000,abort_conf:true"
   POWDR_OPENVM_SEGMENT_DELTA: 50000
+  # Route APC generation through the Lean apc-optimizer (linked via the
+  # `lean-optimizer` cargo feature, selected at runtime by this env var).
+  POWDR_USE_LEAN_OPTIMIZER: "1"
 
 jobs:
   test_guests_apc:
@@ -36,6 +39,15 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-release-apc-${{ hashFiles('**/Cargo.toml') }}
 
+      # The Lean apc-optimizer's managed checkout (clone + compiled mathlib
+      # objects) lives here; cache it keyed on build.rs so a `lake build` from
+      # scratch only happens when the pinned revision changes.
+      - name: ⚡ Cache apc-optimizer (Lean) checkout
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/powdr-apc-optimizer
+          key: ${{ runner.os }}-apc-optimizer-${{ hashFiles('autoprecompiles-lean-ffi/build.rs') }}
+
       - name: Build
         run: cargo build --release -p powdr-openvm
 
@@ -54,14 +66,21 @@ jobs:
           rustup toolchain install nightly-2026-01-18
           rustup component add rust-src --toolchain nightly-2026-01-18
 
+      - name: Install Lean toolchain (elan)
+        # The `lean-optimizer` feature links the Lean apc-optimizer via FFI, whose
+        # build script needs `lean`/`lake`.
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
       - name: Run keccak with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-keccak --profile-input 10000 --input 10000 --autoprecompiles 100 --recursion
+        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r --features lean-optimizer prove guest-keccak --profile-input 10000 --input 10000 --autoprecompiles 100 --recursion
 
       - name: Run ECC with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecc-powdr-affine-hint --profile-input 20 --input 20 --autoprecompiles 100 --recursion
+        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r --features lean-optimizer prove guest-ecc-powdr-affine-hint --profile-input 20 --input 20 --autoprecompiles 100 --recursion
 
       - name: Run ecrecover with 100 APCs
-        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r prove guest-ecrecover --profile-input 20 --input 20 --autoprecompiles 100 --recursion
+        run: /usr/bin/time -v cargo run --bin powdr_openvm_riscv -r --features lean-optimizer prove guest-ecrecover --profile-input 20 --input 20 --autoprecompiles 100 --recursion
 
       - name: Patch benchmark
         uses: ./.github/actions/patch-openvm-eth
@@ -73,8 +92,9 @@ jobs:
           mkdir -p $RES_DIR
           echo "export RPC_1=${{ secrets.RPC_1 }}" >> .env
 
-          # Prove with 100 APCs. Block 24171384 has ~5M gas.
-          /usr/bin/time -v ./run.sh --apc 100  --mode prove-stark --block 24171384 || exit 1
+          # Prove with 100 APCs. Block 24171384 has ~5M gas. `--lean-optimizer`
+          # routes APC generation through the Lean apc-optimizer.
+          /usr/bin/time -v ./run.sh --lean-optimizer --apc 100  --mode prove-stark --block 24171384 || exit 1
           echo "Finished proving with 100 APCs"
 
       - name: Save revisions and run info

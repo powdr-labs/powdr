@@ -12,7 +12,7 @@ Symbolic machine using 2 unique main columns:
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=-is_valid, args=[0, inner__from_state__timestamp_0]
-mult=is_valid, args=[8, inner__from_state__timestamp_0 + 1]
+mult=is_valid, args=[8, 1 + inner__from_state__timestamp_0]
 
 // Algebraic constraints:
 is_valid * (is_valid - 1) = 0
