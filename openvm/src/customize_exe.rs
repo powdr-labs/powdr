@@ -32,6 +32,7 @@ use powdr_number::{BabyBearField, FieldElement, LargeInt};
 use powdr_openvm_bus_interaction_handler::bus_map::OpenVmBusType;
 use serde::{Deserialize, Serialize};
 
+use crate::powdr_extension::trace_generator::metadata::ApcTraceGenMeta;
 use crate::powdr_extension::{PowdrOpcode, PowdrPrecompile};
 
 pub use powdr_openvm_bus_interaction_handler::{
@@ -327,6 +328,9 @@ pub fn setup<'a, ISA: OpenVmISA>(
     // We need to clone the program because we need to modify it to add the apc instructions.
     let mut exe = (*exe).clone();
     let program = &mut exe.program;
+    let airs = original_config.airs(degree_bound).expect(
+        "Failed to convert the AIR of an OpenVM instruction, even after filtering by the blacklist!",
+    );
 
     tracing::info!("Adjust the program with the autoprecompiles");
 
@@ -348,6 +352,7 @@ pub fn setup<'a, ISA: OpenVmISA>(
             // We encode in the program that the prover should execute the apc instruction instead of the original software version.
             // This is only for witgen: the program in the program chip is left unchanged.
             program.add_apc_instruction_at_pc_index(start_index, VmOpcode::from_usize(opcode));
+            let trace_meta = ApcTraceGenMeta::new(&apc, &airs.opcode_to_air);
 
             PowdrPrecompile::new(
                 format!("PowdrAutoprecompile_{}", start_pc),
@@ -355,6 +360,7 @@ pub fn setup<'a, ISA: OpenVmISA>(
                     class_offset: opcode,
                 },
                 apc,
+                trace_meta,
                 apc_stats,
             )
         })
@@ -362,7 +368,7 @@ pub fn setup<'a, ISA: OpenVmISA>(
 
     CompiledProgram {
         exe: Arc::new(exe),
-        vm_config: SpecializedConfig::new(original_config, extensions, degree_bound),
+        vm_config: SpecializedConfig::new(original_config, extensions, airs),
     }
 }
 

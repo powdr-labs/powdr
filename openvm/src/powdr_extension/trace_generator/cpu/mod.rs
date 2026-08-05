@@ -15,10 +15,14 @@ use powdr_expression::AlgebraicExpression;
 use powdr_number::ExpressionConvertible;
 
 use crate::{
-    extraction_utils::{OriginalAirs, OriginalVmConfig},
+    extraction_utils::OriginalVmConfig,
     isa::IsaApc,
     isa::OpenVmISA,
-    powdr_extension::{chip::PowdrChipCpu, executor::OriginalArenas},
+    powdr_extension::{
+        chip::PowdrChipCpu,
+        executor::OriginalArenas,
+        trace_generator::metadata::{ApcTraceGenMeta, CpuTraceGenMeta},
+    },
 };
 
 /// The inventory of the PowdrExecutor, which contains the executors for each opcode.
@@ -31,7 +35,7 @@ pub use periphery::{
     PowdrPeripheryInstancesCpu, SharedPeripheryChipsCpu, SharedPeripheryChipsCpuProverExt,
 };
 
-/// A wrapper around a DenseMatrix to implement `TraceTrait` which is required for `generate_trace`.
+/// A wrapper around a DenseMatrix to implement `TraceTrait` for cached dummy-trace slicing.
 pub struct SharedCpuTrace<F> {
     pub matrix: Arc<RowMajorMatrix<F>>,
 }
@@ -69,34 +73,39 @@ impl<R, PB: ProverBackend<Matrix = RowMajorMatrix<BabyBear>>, ISA: OpenVmISA> Ch
 }
 
 pub struct PowdrTraceGeneratorCpu<ISA: OpenVmISA> {
-    pub apc: IsaApc<BabyBear, ISA>,
-    pub original_airs: OriginalAirs<BabyBear, ISA>,
+    apc: IsaApc<BabyBear, ISA>,
+    trace_meta: ApcTraceGenMeta,
+    cpu_meta: CpuTraceGenMeta<BabyBear>,
     pub config: OriginalVmConfig<ISA>,
     pub periphery: PowdrPeripheryInstancesCpu<ISA>,
 }
 
 impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
-    pub fn new(
+    pub(crate) fn new(
         apc: IsaApc<BabyBear, ISA>,
-        original_airs: OriginalAirs<BabyBear, ISA>,
+        trace_meta: ApcTraceGenMeta,
         config: OriginalVmConfig<ISA>,
         periphery: PowdrPeripheryInstancesCpu<ISA>,
     ) -> Self {
+        let cpu_meta = CpuTraceGenMeta::new(&trace_meta, &apc);
         Self {
             apc,
-            original_airs,
+            trace_meta,
+            cpu_meta,
             config,
             periphery,
         }
+    }
+
+    pub fn apc(&self) -> &IsaApc<BabyBear, ISA> {
+        &self.apc
     }
 
     pub fn generate_witness(
         &self,
         original_arenas: OriginalArenas<MatrixRecordArena<BabyBear>>,
     ) -> DenseMatrix<BabyBear> {
-        use powdr_autoprecompiles::trace_handler::{generate_trace, TraceData};
-
-        let width = self.apc.machine().main_columns().count();
+        let width = self.trace_meta.width();
 
         let mut original_arenas = match original_arenas {
             OriginalArenas::Initialized(arenas) => arenas,
@@ -142,20 +151,11 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             })
             .collect();
 
-        let TraceData {
-            dummy_values,
-            dummy_trace_index_to_apc_index_by_instruction,
-            apc_poly_id_to_index,
-            columns_to_compute,
-        } = generate_trace(
-            &dummy_trace_by_air_name,
-            &self.original_airs,
-            num_apc_calls,
-            &self.apc,
-        );
+        let dummy_values = self
+            .trace_meta
+            .dummy_values(&dummy_trace_by_air_name, num_apc_calls);
 
         // allocate for apc trace
-        let width = apc_poly_id_to_index.len();
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
@@ -176,22 +176,22 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     .map(|r| &r.data[r.start..r.start + r.length])
                     .collect();
 
-                for (&dummy_row, dummy_trace_index_to_apc_index) in dummy_rows
-                    .iter()
-                    .zip_eq(&dummy_trace_index_to_apc_index_by_instruction)
+                for (&dummy_row, instruction) in
+                    dummy_rows.iter().zip_eq(&self.cpu_meta.instructions)
                 {
-                    for (dummy_trace_index, apc_index) in dummy_trace_index_to_apc_index {
+                    for (dummy_trace_index, apc_index) in &instruction.copy_pairs {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
                 }
 
                 // Fill the computed columns (e.g. `is_valid`), each pre-resolved to its APC row
                 // index and a method reading its inputs from the dummy trace.
-                for (target_index, method) in &columns_to_compute {
+                for (target_index, method) in &self.cpu_meta.columns_to_compute {
                     row_slice[*target_index] = evaluate_computation_method(method, &dummy_rows);
                 }
 
-                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
+                let evaluator =
+                    MappingRowEvaluator::new(row_slice, &self.trace_meta.apc_poly_id_to_index);
 
                 // replay the side effects of this row on the main periphery
                 self.apc
