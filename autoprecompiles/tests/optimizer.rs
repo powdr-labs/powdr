@@ -175,11 +175,11 @@ fn test_sha256() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        11906
+        11903
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        10498
+        9567
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
@@ -282,7 +282,7 @@ fn test_optimize_reth_op() {
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        484
+        482
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
