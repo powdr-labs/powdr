@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785886851106,
+  "lastUpdate": 1785975529004,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417451,6 +417451,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 41222907319,
             "range": "± 219009786",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Thibaut Schaeffer",
+            "username": "Schaeff",
+            "email": "schaeffer.thibaut@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f81190867f3880374ade1e23e9d2045d99528991",
+          "message": "Remove generate_trace, build apc analysis once in openvm (#3809)\n\nAlternative to #3807 \n\n- Remove generate_trace as it's doing too much\n- Introduce cached apc data for cpu, gpu and shared, so that\n`PowdrExtension` has as much as possible precomputed\n\nNot totally sure this is worth it though.\n\n---------\n\nCo-authored-by: qwang98 <qian.wang.wg24@wharton.upenn.edu>",
+          "timestamp": "2026-08-05T13:14:34Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/f81190867f3880374ade1e23e9d2045d99528991"
+        },
+        "date": 1785975518178,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 15410708914,
+            "range": "± 472762481",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 41226300731,
+            "range": "± 310174038",
             "unit": "ns/iter"
           }
         ]
