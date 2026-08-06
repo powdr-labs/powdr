@@ -11,8 +11,19 @@ pub enum SingleDataValue {
 }
 
 pub fn quote(s: &str) -> String {
-    // TODO more things to quote
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('\"', "\\\""))
+    let escaped = s
+        .chars()
+        .map(|c| match c {
+            '\\' => "\\\\".to_string(),
+            '"' => "\\\"".to_string(),
+            '\n' => "\\n".to_string(),
+            '\r' => "\\r".to_string(),
+            '\t' => "\\t".to_string(),
+            c if c.is_control() => format!("\\u{{{:x}}}", c as u32),
+            c => c.to_string(),
+        })
+        .collect::<String>();
+    format!("\"{escaped}\"")
 }
 
 pub fn escape_label(l: &str) -> String {
@@ -30,4 +41,17 @@ pub fn escape_label(l: &str) -> String {
         .replace(" ", "_space_")
         .replace("'", "_quote_")
         .replace("*", "_deref_")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::quote;
+
+    #[test]
+    fn quote_escapes_control_characters() {
+        assert_eq!(
+            quote("line\ncolumn\treturn\r"),
+            "\"line\\ncolumn\\treturn\\r\""
+        );
+    }
 }
