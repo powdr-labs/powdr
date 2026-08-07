@@ -3,12 +3,16 @@ use std::{collections::HashMap, sync::Arc};
 use itertools::Itertools;
 use openvm_circuit::{arch::MatrixRecordArena, utils::next_power_of_two_or_zero};
 use openvm_circuit_primitives::Chip;
+use openvm_stark_backend::p3_maybe_rayon::prelude::*;
 use openvm_stark_backend::{
     p3_field::{Field, PrimeCharacteristicRing, PrimeField32},
     p3_matrix::dense::{DenseMatrix, RowMajorMatrix},
     prover::{AirProvingContext, ProverBackend},
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use powdr_autoprecompiles::expression::{
+    AlgebraicEvaluator, ConcreteBusInteraction, MappingRowEvaluator,
+};
 use powdr_autoprecompiles::trace_handler::{DummyCoord, ResolvedMethod, TraceTrait};
 use powdr_constraint_solver::constraint_system::ComputationMethod;
 use powdr_expression::AlgebraicExpression;
@@ -155,30 +159,38 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             .trace_meta
             .dummy_values(&dummy_trace_by_air_name, num_apc_calls);
 
+        // Poly ID -> column index lookup for the row loop (poly IDs may be sparse).
+        let poly_id_to_index = &self.trace_meta.apc_poly_id_to_index;
+        let max_poly_id = poly_id_to_index.keys().last().copied().unwrap_or(0) as usize;
+        let apc_poly_id_to_index: Vec<usize> = (0..=max_poly_id)
+            .map(|id| poly_id_to_index.get(&(id as u64)).copied().unwrap_or(0))
+            .collect();
+
+        // Hoist bus interactions so the parallel closure doesn't capture `self`.
+        let bus_interactions = &self.apc.machine().bus_interactions;
         // allocate for apc trace
         let height = next_power_of_two_or_zero(num_apc_calls);
         let mut values = <BabyBear as PrimeCharacteristicRing>::zero_vec(height * width);
 
         // go through the final table and fill in the values
+        let periphery_real = &self.periphery.real;
+        let periphery_bus_ids = &self.periphery.bus_ids;
+        // Borrow into locals so the parallel closure doesn't capture `self` (not Sync).
+        let instructions = &self.cpu_meta.instructions;
+        let columns_to_compute = &self.cpu_meta.columns_to_compute;
+
         values
-            // a record is `width` values
-            // TODO: optimize by parallelizing on chunks of rows, currently fails because `dyn AnyChip<MatrixRecordArena<Val<SC>>>` is not `Send`
-            .chunks_mut(width)
-            .zip(dummy_values)
+            .par_chunks_mut(width)
+            .zip(dummy_values.into_par_iter())
             .for_each(|(row_slice, dummy_values)| {
                 // map the dummy rows to the autoprecompile row
-
-                use powdr_autoprecompiles::expression::MappingRowEvaluator;
-
                 // The per-instruction dummy trace rows for this apc call.
                 let dummy_rows: Vec<&[BabyBear]> = dummy_values
                     .iter()
                     .map(|r| &r.data[r.start..r.start + r.length])
                     .collect();
 
-                for (&dummy_row, instruction) in
-                    dummy_rows.iter().zip_eq(&self.cpu_meta.instructions)
-                {
+                for (&dummy_row, instruction) in dummy_rows.iter().zip_eq(instructions) {
                     for (dummy_trace_index, apc_index) in &instruction.copy_pairs {
                         row_slice[*apc_index] = dummy_row[*dummy_trace_index];
                     }
@@ -186,32 +198,22 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
 
                 // Fill the computed columns (e.g. `is_valid`), each pre-resolved to its APC row
                 // index and a method reading its inputs from the dummy trace.
-                for (target_index, method) in &self.cpu_meta.columns_to_compute {
+                for (target_index, method) in columns_to_compute {
                     row_slice[*target_index] = evaluate_computation_method(method, &dummy_rows);
                 }
 
-                let evaluator =
-                    MappingRowEvaluator::new(row_slice, &self.trace_meta.apc_poly_id_to_index);
-
-                // replay the side effects of this row on the main periphery
-                self.apc
-                    .machine()
-                    .bus_interactions
-                    .iter()
-                    .for_each(|interaction| {
-                        use powdr_autoprecompiles::expression::{
-                            AlgebraicEvaluator, ConcreteBusInteraction,
-                        };
-
-                        let ConcreteBusInteraction { id, mult, args } =
-                            evaluator.eval_bus_interaction(interaction);
-                        self.periphery.real.apply(
-                            id as u16,
-                            mult.as_canonical_u32(),
-                            args.map(|arg| arg.as_canonical_u32()),
-                            &self.periphery.bus_ids,
-                        );
-                    });
+                // Replay bus interactions via the row evaluator (periphery counters are atomic).
+                let evaluator = MappingRowEvaluator::new(row_slice, &apc_poly_id_to_index);
+                bus_interactions.iter().for_each(|interaction| {
+                    let ConcreteBusInteraction { id, mult, args } =
+                        evaluator.eval_bus_interaction(interaction);
+                    periphery_real.apply(
+                        id as u16,
+                        mult.as_canonical_u32(),
+                        args.map(|arg| arg.as_canonical_u32()),
+                        periphery_bus_ids,
+                    );
+                });
             });
 
         RowMajorMatrix::new(values, width)
