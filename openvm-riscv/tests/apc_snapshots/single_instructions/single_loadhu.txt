@@ -2,55 +2,57 @@ Instructions:
   0: LOADHU rd_rs2_ptr = 0, rs1_ptr = 2, imm = 22, mem_as = 2, needs_write = 0, imm_sign = 0
 
 APC advantage:
-  - Main columns: 41 -> 18 (2.28x reduction)
+  - Main columns: 41 -> 19 (2.16x reduction)
   - Bus interactions: 17 -> 12 (1.42x reduction)
-  - Constraints: 25 -> 9 (2.78x reduction)
+  - Constraints: 25 -> 6 (4.17x reduction)
 
-Symbolic machine using 18 unique main columns:
+Symbolic machine using 19 unique main columns:
   from_state__timestamp_0
   rs1_data__0_0
   rs1_data__1_0
   rs1_data__2_0
   rs1_data__3_0
-  rs1_aux_cols__base__prev_timestamp_0
   rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0
-  read_data_aux__base__prev_timestamp_0
+  rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_0
   read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0
+  read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0
   mem_ptr_limbs__0_0
   mem_ptr_limbs__1_0
-  flags__1_0
-  flags__2_0
   read_data__0_0
   read_data__1_0
   read_data__2_0
   read_data__3_0
+  write_data__0_0
+  write_data__1_0
+  rnc10_13_0_0
   is_valid
 
 // Bus 0 (EXECUTION_BRIDGE):
 mult=-is_valid, args=[0, from_state__timestamp_0]
-mult=is_valid, args=[4, from_state__timestamp_0 + 3]
+mult=is_valid, args=[4, 3 + from_state__timestamp_0]
 
 // Bus 1 (MEMORY):
-mult=-is_valid, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, rs1_aux_cols__base__prev_timestamp_0]
+mult=-is_valid, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, 2013265920 + from_state__timestamp_0 + 2013265920 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0 + 2013134849 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_0]
 mult=is_valid, args=[1, 2, rs1_data__0_0, rs1_data__1_0, rs1_data__2_0, rs1_data__3_0, from_state__timestamp_0]
-mult=-is_valid, args=[2, 2 * flags__1_0 * (flags__1_0 + flags__2_0 - 2) + 3 * flags__2_0 * (flags__1_0 + flags__2_0 - 2) + mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 - flags__2_0 * (flags__2_0 - 1), read_data__0_0, read_data__1_0, read_data__2_0, read_data__3_0, read_data_aux__base__prev_timestamp_0]
-mult=is_valid, args=[2, 2 * flags__1_0 * (flags__1_0 + flags__2_0 - 2) + 3 * flags__2_0 * (flags__1_0 + flags__2_0 - 2) + mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 - flags__2_0 * (flags__2_0 - 1), read_data__0_0, read_data__1_0, read_data__2_0, read_data__3_0, from_state__timestamp_0 + 1]
+mult=-is_valid, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 + 2013265919 * rnc10_13_0_0, read_data__0_0, read_data__1_0, read_data__2_0, read_data__3_0, from_state__timestamp_0 + 2013265920 * read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0 + 2013134849 * read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0]
+mult=is_valid, args=[2, mem_ptr_limbs__0_0 + 65536 * mem_ptr_limbs__1_0 + 2013265919 * rnc10_13_0_0, read_data__0_0, read_data__1_0, read_data__2_0, read_data__3_0, 1 + from_state__timestamp_0]
 
 // Bus 3 (VARIABLE_RANGE_CHECKER):
 mult=is_valid, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid, args=[15360 * rs1_aux_cols__base__prev_timestamp_0 + 15360 * rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__0_0 + 15360 - 15360 * from_state__timestamp_0, 12]
-mult=is_valid, args=[503316480 * flags__2_0 * (flags__2_0 - 1) + 503316481 * flags__2_0 * (flags__1_0 + flags__2_0 - 2) + 503316480 * flags__1_0 * flags__2_0 - (1006632960 * flags__1_0 * (flags__1_0 + flags__2_0 - 2) + 503316480 * mem_ptr_limbs__0_0), 14]
+mult=is_valid, args=[rs1_aux_cols__base__timestamp_lt_aux__lower_decomp__1_0, 12]
+mult=is_valid, args=[1509949441 * mem_ptr_limbs__0_0 + 1006632960 * rnc10_13_0_0, 14]
 mult=is_valid, args=[mem_ptr_limbs__1_0, 13]
 mult=is_valid, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0, 17]
-mult=is_valid, args=[15360 * read_data_aux__base__prev_timestamp_0 + 15360 * read_data_aux__base__timestamp_lt_aux__lower_decomp__0_0 - 15360 * from_state__timestamp_0, 12]
+mult=is_valid, args=[read_data_aux__base__timestamp_lt_aux__lower_decomp__1_0, 12]
 
 // Algebraic constraints:
-flags__1_0 * ((flags__1_0 - 1) * (flags__1_0 - 2)) = 0
-flags__2_0 * ((flags__2_0 - 1) * (flags__2_0 - 2)) = 0
-(flags__1_0 + flags__2_0 - is_valid) * (flags__1_0 + flags__2_0 - 2) = 0
-1006632960 * flags__1_0 * (flags__1_0 - 1) + 1006632960 * flags__2_0 * (flags__2_0 - 1) + flags__1_0 * (flags__1_0 + flags__2_0 - 2) + flags__2_0 * (flags__1_0 + flags__2_0 - 2) + is_valid = 0
-(30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 675840 * is_valid)) * (30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + 675841)) = 0
-(943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 629145590 * is_valid - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0)) * (943718400 * rs1_data__0_0 + 30720 * mem_ptr_limbs__1_0 + 629145589 - (120 * rs1_data__1_0 + 30720 * rs1_data__2_0 + 7864320 * rs1_data__3_0 + 943718400 * mem_ptr_limbs__0_0)) = 0
-flags__1_0 * (flags__1_0 - 1) + flags__2_0 * (flags__2_0 - 1) + 5 * flags__1_0 * flags__2_0 - (flags__1_0 * (flags__1_0 + flags__2_0 - 2) + flags__2_0 * (flags__1_0 + flags__2_0 - 2) + 2 * is_valid) = 0
-flags__1_0 * flags__2_0 = 0
+(rnc10_13_0_0 - 1) * read_data__0_0 + write_data__0_0 - rnc10_13_0_0 * read_data__2_0 = 0
+(rnc10_13_0_0 - 1) * read_data__1_0 + write_data__1_0 - rnc10_13_0_0 * read_data__3_0 = 0
+(rs1_data__0_0 + 256 * rs1_data__1_0 + 22 * is_valid - mem_ptr_limbs__0_0) * (rs1_data__0_0 + 256 * rs1_data__1_0 - (mem_ptr_limbs__0_0 + 65514)) = 0
+(rs1_data__2_0 + 256 * rs1_data__3_0 + 30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + mem_ptr_limbs__1_0 + 675840 * is_valid)) * (rs1_data__2_0 + 256 * rs1_data__3_0 + 30720 * mem_ptr_limbs__0_0 - (30720 * rs1_data__0_0 + 7864320 * rs1_data__1_0 + mem_ptr_limbs__1_0 + 741376)) = 0
+rnc10_13_0_0 * (rnc10_13_0_0 - 1) = 0
 is_valid * (is_valid - 1) = 0
+
+// Derived columns:
+rnc10_13_0_0 (new) = IfEqZero(flags__1_0 + 2013265919, IfEqZero(flags__2_0 + 0, 0, IfEqZero(flags__1_0 + 0, IfEqZero(flags__2_0 + 2013265919, 1, 0), 0)), IfEqZero(flags__1_0 + 0, IfEqZero(flags__2_0 + 2013265919, 1, 0), 0))
+is_valid (new) = 1

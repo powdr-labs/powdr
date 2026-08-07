@@ -16,7 +16,7 @@ use crate::{
     constraint_optimizer::IsBusStateful,
     memory_optimizer::MemoryBusInteraction,
     range_constraint_optimizer::RangeConstraintHandler,
-    Apc, InstructionHandler, PowdrConfig, VmConfig,
+    Apc, GenerateConfig, InstructionHandler, SelectConfig, VmConfig,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -55,33 +55,17 @@ impl<F, I, A, V, S> ApcWithStats<F, I, A, V, S> {
 pub trait PgoAdapter {
     type Adapter: Adapter;
 
-    fn filter_blocks_and_create_apcs_with_pgo(
-        &self,
-        blocks: Vec<AdapterBasicBlock<Self::Adapter>>,
-        config: &PowdrConfig,
-        vm_config: AdapterVmConfig<Self::Adapter>,
-        labels: BTreeMap<u64, Vec<String>>,
-        empirical_constraints: EmpiricalConstraints,
-    ) -> Vec<AdapterApcWithStats<Self::Adapter>> {
-        let blocks = if let Some(prof) = self.execution_profile() {
-            detect_superblocks(config, &prof.pc_list, blocks)
-        } else {
-            let superblocks = blocks
-                .into_iter()
-                .map(SuperBlock::from)
-                // filter invalid APC candidates
-                .filter(|sb| sb.instructions().count() > 1)
-                .collect();
-            ExecutionBlocks::new_without_pgo(superblocks)
-        };
-
-        self.create_apcs_with_pgo(blocks, config, vm_config, labels, empirical_constraints)
-    }
-
+    /// Build and rank APC candidates. The returned Vec is ordered by the
+    /// PGO strategy's ranking (best candidate first); callers trim with
+    /// [`select_apcs`].
+    ///
+    /// `generate.apc_candidates` caps how many candidates get built. `None`
+    /// means "all eligible blocks". The PGO strategy might ignore the cap
+    /// (and produce more APCs).
     fn create_apcs_with_pgo(
         &self,
         exec_blocks: AdapterExecutionBlocks<Self::Adapter>,
-        config: &PowdrConfig,
+        generate: &GenerateConfig,
         vm_config: AdapterVmConfig<Self::Adapter>,
         labels: BTreeMap<u64, Vec<String>>,
         empirical_constraints: EmpiricalConstraints,
@@ -95,6 +79,43 @@ pub trait PgoAdapter {
         self.execution_profile()
             .and_then(|prof| prof.pc_count.get(&pc).cloned())
     }
+}
+
+/// Run superblock detection over `blocks` using the adapter's profile (or
+/// fall back to a profile-less wrapping for the no-PGO case). The result is
+/// the input shape expected by [`PgoAdapter::create_apcs_with_pgo`].
+pub fn detect_blocks<P: PgoAdapter + ?Sized>(
+    pgo: &P,
+    blocks: Vec<AdapterBasicBlock<P::Adapter>>,
+    generate: &GenerateConfig,
+) -> AdapterExecutionBlocks<P::Adapter> {
+    if let Some(prof) = pgo.execution_profile() {
+        detect_superblocks(generate, &prof.pc_list, blocks)
+    } else {
+        let superblocks = blocks
+            .into_iter()
+            .map(SuperBlock::from)
+            // filter invalid APC candidates
+            .filter(|sb| sb.instructions().count() > 1)
+            .collect();
+        ExecutionBlocks::new_without_pgo(superblocks)
+    }
+}
+
+/// Trim a ranked list of APCs to the configured selection size.
+///
+/// Generation produces a ranking; selection is a pure slice — `skip` past
+/// the top, then take `autoprecompiles`. Kept as a function (not a trait
+/// method) because the operation is PGO-agnostic.
+pub fn select_apcs<A: Adapter>(
+    ranked: Vec<AdapterApcWithStats<A>>,
+    select: SelectConfig,
+) -> Vec<AdapterApcWithStats<A>> {
+    ranked
+        .into_iter()
+        .skip(select.skip as usize)
+        .take(select.autoprecompiles as usize)
+        .collect()
 }
 
 pub trait Adapter: Sized

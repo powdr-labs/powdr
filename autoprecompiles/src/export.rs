@@ -45,29 +45,22 @@ pub enum ExportLevel {
 impl ExportOptions {
     /// Creates a new export options instance. Does not export anything unless
     /// a path is given. `path` is a path to a file name prefix.
+    /// The export level is read from the `APC_EXPORT_LEVEL` environment variable.
     /// During export, a sequence number and an extension will be appended.
-    pub fn new(path: Option<PathBuf>, start_pcs: &[u64], level: ExportLevel) -> Self {
-        ExportOptions {
-            path: path.map(|p| p.join(format!("apc_candidate_{}", start_pcs.iter().join("_")))),
-            level,
-            sequence_number: 0,
-            substituted_variables: Vec::new(),
-        }
-    }
-    /// Constructs export options from environment variables.
-    pub fn from_env_vars(
-        export_path: Option<String>,
-        export_level: Option<String>,
-        start_pcs: &[u64],
-    ) -> Self {
-        let path = export_path.map(PathBuf::from);
+    pub fn new(path: Option<PathBuf>, start_pcs: &[u64]) -> Self {
+        let export_level = std::env::var("APC_EXPORT_LEVEL").ok();
         let level = match export_level.as_deref() {
             Some("1") => ExportLevel::OnlyAPC,
             Some("2") => ExportLevel::APCAndOptimizerLoop,
             Some("3") => ExportLevel::APCAndOptimizerSteps,
             _ => ExportLevel::OnlyAPC,
         };
-        ExportOptions::new(path, start_pcs, level)
+        ExportOptions {
+            path: path.map(|p| p.join(format!("apc_candidate_{}", start_pcs.iter().join("_")))),
+            level,
+            sequence_number: 0,
+            substituted_variables: Vec::new(),
+        }
     }
 
     pub fn export_requested(&self) -> bool {

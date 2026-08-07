@@ -1,6 +1,7 @@
 pub mod cpu;
 #[cfg(feature = "cuda")]
 pub mod cuda;
+pub(crate) mod metadata;
 
 mod common;
 

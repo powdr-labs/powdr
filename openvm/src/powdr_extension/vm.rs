@@ -11,12 +11,14 @@ use openvm_instructions::instruction::Instruction;
 use openvm_instructions::LocalOpcode;
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use powdr_openvm_bus_interaction_handler::bus_map::BusMap;
+use serde::{Deserialize, Serialize};
 
 use crate::customize_exe::OvmApcStats;
 use crate::extraction_utils::{OriginalAirs, OriginalVmConfig};
 use crate::isa::{IsaApc, OpenVmISA};
 use crate::powdr_extension::chip::PowdrAir;
 use crate::powdr_extension::executor::{OriginalArenas, PowdrExecutor};
+use crate::powdr_extension::trace_generator::metadata::ApcTraceGenMeta;
 use crate::powdr_extension::PowdrOpcode;
 use openvm_circuit::{
     arch::{AirInventory, AirInventoryError, VmCircuitExtension, VmExecutionExtension},
@@ -26,9 +28,8 @@ use openvm_stark_backend::{
     p3_field::{Field, PrimeField32},
     StarkProtocolConfig, Val,
 };
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "F: Field")]
 pub struct PowdrExtension<F, ISA: OpenVmISA> {
     pub precompiles: Vec<PowdrPrecompile<F, ISA>>,
@@ -43,24 +44,27 @@ pub struct PowdrPrecompile<F, ISA: OpenVmISA> {
     pub name: String,
     pub opcode: PowdrOpcode,
     pub apc: IsaApc<F, ISA>,
+    pub trace_meta: ApcTraceGenMeta,
     pub apc_stats: OvmApcStats,
-    #[serde(skip)]
+    #[serde(skip, default)]
     pub apc_record_arena_cpu: Rc<RefCell<OriginalArenas<MatrixRecordArena<F>>>>,
-    #[serde(skip)]
+    #[serde(skip, default)]
     pub apc_record_arena_gpu: Rc<RefCell<OriginalArenas<DenseRecordArena>>>,
 }
 
 impl<F, ISA: OpenVmISA> PowdrPrecompile<F, ISA> {
-    pub fn new(
+    pub(crate) fn new(
         name: String,
         opcode: PowdrOpcode,
         apc: IsaApc<F, ISA>,
+        trace_meta: ApcTraceGenMeta,
         apc_stats: OvmApcStats,
     ) -> Self {
         Self {
             name,
             opcode,
             apc,
+            trace_meta,
             apc_stats,
             // Initialize with empty Rc (default to OriginalArenas::Uninitialized) for each APC
             apc_record_arena_cpu: Default::default(),

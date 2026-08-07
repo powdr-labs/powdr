@@ -10,6 +10,8 @@ use powdr_constraint_solver::inliner::{self, inline_everything_below_degree_boun
 use powdr_constraint_solver::rule_based_optimizer::rule_based_optimization;
 use powdr_constraint_solver::solver::new_solver;
 use powdr_number::FieldElement;
+#[cfg(feature = "lean-optimizer")]
+use powdr_number::KnownField;
 
 use crate::constraint_optimizer;
 use crate::constraint_optimizer::{trivial_simplifications, IsBusStateful};
@@ -28,6 +30,10 @@ use crate::{
     BusMap, BusType, DegreeBound, SymbolicMachine,
 };
 
+/// Opt-in integration routing `optimize` through the apc-optimizer (Lean) via FFI.
+#[cfg(feature = "lean-optimizer")]
+mod lean;
+
 /// Optimizes a given symbolic machine and returns an equivalent, but "simpler" one.
 /// All constraints in the returned machine will respect the given degree bound.
 /// New variables may be introduced in the process.
@@ -42,9 +48,30 @@ pub fn optimize<T, B, BusTypes, MemoryBus>(
 where
     T: FieldElement,
     B: BusInteractionHandler<T> + IsBusStateful<T> + RangeConstraintHandler<T> + Clone,
-    BusTypes: PartialEq + Eq + Clone + Display,
+    BusTypes: PartialEq + Eq + Clone + Display + serde::Serialize,
     MemoryBus: MemoryBusInteraction<T, AlgebraicReference>,
 {
+    #[cfg(feature = "lean-optimizer")]
+    if lean::enabled() {
+        // TODO: This is a hack, we should pass the known VM into optimize()!
+        let vm = match T::known_field() {
+            Some(KnownField::BabyBearField) => lean::KnownVm::OpenVm,
+            Some(KnownField::KoalaBearField) => lean::KnownVm::Sp1,
+            other => panic!(
+                "Lean optimizer supports BabyBear (OpenVM) and KoalaBear (SP1), got {other:?}"
+            ),
+        };
+        let (optimized, next_free_id) = lean::optimize(
+            &machine,
+            bus_map,
+            column_allocator.next_poly_id,
+            vm,
+            degree_bound,
+        );
+        column_allocator.next_poly_id = next_free_id;
+        return Ok((optimized, column_allocator));
+    }
+
     let mut stats_logger = StatsLogger::start(&machine);
 
     if let Some(exec_bus_id) = bus_map.get_bus_id(&BusType::ExecutionBridge) {

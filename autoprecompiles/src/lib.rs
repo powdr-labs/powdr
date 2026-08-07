@@ -52,21 +52,23 @@ pub mod range_constraint_optimizer;
 mod stats_logger;
 pub mod symbolic_machine;
 pub mod symbolic_machine_generator;
-pub use pgo::{PgoConfig, PgoType};
+pub use pgo::{PgoConfig, PgoData, PgoType};
 pub use powdr_constraint_solver::inliner::DegreeBound;
 pub mod equivalence_classes;
 pub mod execution;
 pub mod export;
 pub mod optimistic;
+pub mod staged_cache;
 pub mod trace_handler;
 
-#[derive(Clone)]
-pub struct PowdrConfig {
-    /// Number of autoprecompiles to generate.
-    pub autoprecompiles: u64,
-    /// Number of basic blocks to skip for autoprecompiles.
-    /// This is either the largest N if no PGO, or the costliest N with PGO.
-    pub skip_autoprecompiles: u64,
+/// Inputs to the build-and-rank stage of the autoprecompile pipeline.
+#[derive(Clone, Debug, Hash)]
+pub struct GenerateConfig {
+    /// Cap on the number of candidate APCs built/ranked.
+    /// `None` means "build all eligible candidates".
+    /// Depending on the PGO strategy, the cap may be ignored
+    /// (meaning that more APCs are computed).
+    pub apc_candidates: Option<u64>,
     /// Maximum number of basic blocks included in a superblock.
     /// Default of 1 means only basic blocks are considered.
     pub superblock_max_bb_count: u8,
@@ -82,12 +84,10 @@ pub struct PowdrConfig {
     pub should_use_optimistic_precompiles: bool,
 }
 
-impl PowdrConfig {
-    pub fn new(autoprecompiles: u64, skip_autoprecompiles: u64, degree_bound: DegreeBound) -> Self {
+impl GenerateConfig {
+    pub fn new(degree_bound: DegreeBound) -> Self {
         Self {
-            autoprecompiles,
-            skip_autoprecompiles,
-            // superblocks disabled by default
+            apc_candidates: None,
             superblock_max_bb_count: 1,
             apc_max_instructions: u32::MAX,
             apc_exec_count_cutoff: 1,
@@ -95,6 +95,11 @@ impl PowdrConfig {
             apc_candidates_dir_path: None,
             should_use_optimistic_precompiles: false,
         }
+    }
+
+    pub fn with_apc_candidates(mut self, apc_candidates: Option<u64>) -> Self {
+        self.apc_candidates = apc_candidates;
+        self
     }
 
     pub fn with_superblocks(
@@ -122,9 +127,47 @@ impl PowdrConfig {
         self
     }
 
+    pub fn with_apc_max_instructions(mut self, max_instructions: u32) -> Self {
+        self.apc_max_instructions = max_instructions;
+        self
+    }
+
     pub fn with_optimistic_precompiles(mut self, should_use_optimistic_precompiles: bool) -> Self {
         self.should_use_optimistic_precompiles = should_use_optimistic_precompiles;
         self
+    }
+
+    /// Single source of truth for the `apc_candidates` default policy.
+    /// Callers should invoke this when both `generate` and `select`
+    /// configs are known.
+    pub fn with_select_defaults(mut self, pgo: pgo::PgoType, select: SelectConfig) -> Self {
+        if self.apc_candidates.is_some() {
+            return self;
+        }
+        self.apc_candidates = match pgo {
+            pgo::PgoType::Cell => (select.autoprecompiles == 0).then_some(0),
+            pgo::PgoType::Instruction | pgo::PgoType::None => {
+                Some(select.autoprecompiles + select.skip)
+            }
+        };
+        self
+    }
+}
+
+/// Inputs to the selection stage — trimming a generate-stage ranking down to
+/// `autoprecompiles` items after skipping `skip` from the top.
+#[derive(Clone, Copy, Debug, Default, Hash)]
+pub struct SelectConfig {
+    pub autoprecompiles: u64,
+    pub skip: u64,
+}
+
+impl SelectConfig {
+    pub fn new(autoprecompiles: u64, skip: u64) -> Self {
+        Self {
+            autoprecompiles,
+            skip,
+        }
     }
 }
 
@@ -226,7 +269,15 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
             .unique_references()
             .map(|r| r.id)
             .collect::<BTreeSet<_>>();
-        // Only keep substitutions from the column allocator if the target poly_id is used in the machine
+        let derived_referenced = machine
+            .derived_columns
+            .iter()
+            .flat_map(|d| d.computation_method.expressions())
+            .flat_map(|e| e.unique_references())
+            .map(|r| r.id)
+            .collect::<BTreeSet<_>>();
+        // Only keep substitutions from the column allocator if the target poly_id is used in the
+        // machine or referenced by a derived column.
         let subs = column_allocator
             .subs
             .iter()
@@ -234,12 +285,12 @@ impl<T, I: PcStep, A, V> Apc<T, I, A, V> {
                 subs.iter()
                     .enumerate()
                     .filter_map(|(original_poly_index, apc_poly_id)| {
-                        all_references
-                            .contains(apc_poly_id)
-                            .then_some(Substitution {
-                                original_poly_index,
-                                apc_poly_id: *apc_poly_id,
-                            })
+                        (all_references.contains(apc_poly_id)
+                            || derived_referenced.contains(apc_poly_id))
+                        .then_some(Substitution {
+                            original_poly_index,
+                            apc_poly_id: *apc_poly_id,
+                        })
                     })
                     .collect_vec()
             })
@@ -434,14 +485,23 @@ fn add_guards_constraint<T: FieldElement>(
 
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = add_guards_constraint(*left, is_valid);
-            let right = match op {
-                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => {
-                    Box::new(add_guards_constraint(*right, is_valid))
+            let (left, right) = match op {
+                AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub => (
+                    // Both sides need to be guarded.
+                    add_guards_constraint(*left, is_valid),
+                    add_guards_constraint(*right, is_valid),
+                ),
+                AlgebraicBinaryOperator::Mul => {
+                    // Only one side needs to be guarded. It does not matter which, but it cannot be
+                    // a constant, because that would increase the degree.
+                    if matches!(*left, AlgebraicExpression::Number(_)) {
+                        (*left, add_guards_constraint(*right, is_valid))
+                    } else {
+                        (add_guards_constraint(*left, is_valid), *right)
+                    }
                 }
-                AlgebraicBinaryOperator::Mul => right,
             };
-            AlgebraicExpression::new_binary(left, op, *right)
+            AlgebraicExpression::new_binary(left, op, right)
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
             let inner = add_guards_constraint(*expr, is_valid);
@@ -480,6 +540,7 @@ fn add_guards<T: FieldElement>(
     let is_valid = AlgebraicExpression::Reference(is_valid_ref.clone());
 
     machine.derived_columns.push(DerivedVariable::new(
+        true,
         is_valid_ref,
         ComputationMethod::Constant(T::one()),
     ));

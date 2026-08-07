@@ -1,13 +1,9 @@
-use itertools::Itertools;
-use powdr_constraint_solver::constraint_system::DerivedVariable;
-use rayon::prelude::*;
-use std::collections::{BTreeMap, HashMap};
-use std::fmt::Display;
-use std::{cmp::Eq, hash::Hash};
+use powdr_constraint_solver::constraint_system::ComputationMethod;
+use powdr_number::ExpressionConvertible;
+use std::collections::BTreeMap;
 
-use crate::blocks::PcStep;
-use crate::expression::{AlgebraicExpression, AlgebraicReference};
-use crate::{Apc, InstructionHandler};
+use crate::expression::AlgebraicReference;
+use powdr_expression::AlgebraicExpression;
 
 pub struct OriginalRowReference<'a, D> {
     pub data: &'a D,
@@ -15,17 +11,40 @@ pub struct OriginalRowReference<'a, D> {
     pub length: usize,
 }
 
-pub struct TraceData<'a, F, D> {
-    /// For each call of the apc, the values of each original instruction's dummy trace.
-    pub dummy_values: Vec<Vec<OriginalRowReference<'a, D>>>,
-    /// The mapping from dummy trace index to APC index for each instruction.
-    pub dummy_trace_index_to_apc_index_by_instruction: Vec<Vec<(usize, usize)>>,
-    /// The mapping from poly_id to the index in the list of apc columns.
-    /// The values are always unique and contiguous.
-    pub apc_poly_id_to_index: BTreeMap<u64, usize>,
-    /// Indices of columns to compute and the way to compute them
-    /// (from other values).
-    pub columns_to_compute: &'a [DerivedVariable<F, AlgebraicReference, AlgebraicExpression<F>>],
+/// A location in one apc call's dummy trace: instruction row and column within it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct DummyCoord {
+    pub instruction: usize,
+    pub index: usize,
+}
+
+/// A derived column's computation method with its references resolved to `DummyCoord`s.
+pub type ResolvedMethod<F> = ComputationMethod<F, AlgebraicExpression<F, DummyCoord>>;
+
+/// Rewrite a computation method's poly-id references to their dummy-trace coordinates. Panics if a
+/// reference isn't backed by the dummy trace; derived columns only reference substituted columns, so
+/// it can't happen.
+pub fn resolve_computation_method<F: Clone>(
+    method: &ComputationMethod<F, AlgebraicExpression<F, AlgebraicReference>>,
+    apc_poly_id_to_dummy_index: &BTreeMap<u64, DummyCoord>,
+) -> ResolvedMethod<F> {
+    method
+        .clone()
+        .convert_expression_type(&|e: AlgebraicExpression<F, AlgebraicReference>| {
+            e.to_expression(
+                &|n: &F| AlgebraicExpression::Number(n.clone()),
+                &|r: &AlgebraicReference| {
+                    let coord = apc_poly_id_to_dummy_index.get(&r.id).unwrap_or_else(|| {
+                        panic!(
+                            "derived column references poly id {} which is not backed by the \
+                             original instruction trace",
+                            r.id
+                        )
+                    });
+                    AlgebraicExpression::Reference(*coord)
+                },
+            )
+        })
 }
 
 pub trait TraceTrait<F>: Send + Sync {
@@ -36,99 +55,25 @@ pub trait TraceTrait<F>: Send + Sync {
     fn values(&self) -> &Self::Values;
 }
 
-// TODO: refactor `Apc` so we don't have to pass A, V here
-pub fn generate_trace<'a, IH, M: TraceTrait<IH::Field>, A, V>(
-    air_id_to_dummy_trace: &'a HashMap<IH::AirId, M>,
-    instruction_handler: &'a IH,
-    apc_call_count: usize,
-    apc: &'a Apc<IH::Field, IH::Instruction, A, V>,
-) -> TraceData<'a, IH::Field, M::Values>
-where
-    IH: InstructionHandler,
-    IH::Field: Display + Clone + Send + Sync,
-    IH::AirId: Eq + Hash + Send + Sync,
-    IH::Instruction: PcStep,
-{
-    // Keep only instructions that produce dummy records
-    let instructions_with_subs = apc
-        .instructions()
-        .zip_eq(apc.subs.iter())
-        .filter(|(_, subs)| !subs.is_empty());
-    let instructions_with_subs = instructions_with_subs.collect::<Vec<_>>();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
 
-    let original_instruction_air_ids = instructions_with_subs
-        .iter()
-        .map(|(instruction, _)| {
-            instruction_handler
-                .get_instruction_air_and_id(instruction)
-                .0
-        })
-        .collect::<Vec<_>>();
-
-    let air_id_occurrences = original_instruction_air_ids.iter().counts();
-
-    let apc_poly_id_to_index: BTreeMap<u64, usize> = apc
-        .machine
-        .main_columns()
-        .enumerate()
-        .map(|(index, c)| (c.id, index))
-        .collect();
-
-    let original_instruction_table_offsets = original_instruction_air_ids
-        .iter()
-        .scan(
-            HashMap::default(),
-            |counts: &mut HashMap<&IH::AirId, usize>, air_id| {
-                let count = counts.entry(air_id).or_default();
-                let current_count = *count;
-                *count += 1;
-                Some(current_count)
-            },
-        )
-        .collect::<Vec<_>>();
-
-    let dummy_trace_index_to_apc_index_by_instruction = instructions_with_subs
-        .iter()
-        .map(|(_, subs)| {
-            subs.iter()
-                .map(|substitution| {
-                    (
-                        substitution.original_poly_index,
-                        apc_poly_id_to_index[&substitution.apc_poly_id],
-                    )
-                })
-                .collect_vec()
-        })
-        .collect();
-
-    let dummy_values = (0..apc_call_count)
-        .into_par_iter()
-        .map(|trace_row| {
-            original_instruction_air_ids
-                .iter()
-                .zip_eq(original_instruction_table_offsets.iter())
-                .map(|(air_id, dummy_table_offset)| {
-                    let trace = air_id_to_dummy_trace.get(air_id).unwrap();
-                    let values = trace.values();
-                    let width = trace.width();
-                    let occurrences_per_record = air_id_occurrences.get(air_id).unwrap();
-                    let start = (trace_row * occurrences_per_record + dummy_table_offset) * width;
-                    OriginalRowReference {
-                        data: values,
-                        start,
-                        length: width,
-                    }
-                })
-                .collect_vec()
-        })
-        .collect();
-
-    let columns_to_compute = &apc.machine.derived_columns;
-
-    TraceData {
-        dummy_values,
-        dummy_trace_index_to_apc_index_by_instruction,
-        apc_poly_id_to_index,
-        columns_to_compute,
+    /// Resolving a reference not backed by the dummy trace panics legibly. (`u64` field: the resolver
+    /// only rewrites references, never evaluates.)
+    #[test]
+    #[should_panic(expected = "not backed by the original")]
+    fn resolve_panics_on_column_not_in_dummy_trace() {
+        let method: ComputationMethod<u64, AlgebraicExpression<u64, AlgebraicReference>> =
+            ComputationMethod::QuotientOrZero(
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    name: Arc::new("c830".to_string()),
+                    id: 830,
+                }),
+                AlgebraicExpression::Number(1),
+            );
+        let empty: BTreeMap<u64, DummyCoord> = BTreeMap::new();
+        let _ = resolve_computation_method::<u64>(&method, &empty);
     }
 }

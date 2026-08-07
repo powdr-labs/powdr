@@ -12,6 +12,11 @@ set -e
 SCRIPT_PATH=$(realpath "${BASH_SOURCE[0]}")
 SCRIPTS_DIR=$(dirname "$SCRIPT_PATH")
 
+# Cargo features for the `powdr_openvm_riscv` builds. Defaults to `metrics`; CI
+# sets `metrics,lean-optimizer` to route APC generation through the Lean4
+# apc-optimizer (selected at runtime by POWDR_USE_LEAN_OPTIMIZER).
+CARGO_FEATURES="${POWDR_BENCH_CARGO_FEATURES:-metrics}"
+
 run_bench() {
     guest="$1"
     input="$2"
@@ -22,23 +27,69 @@ run_bench() {
     echo "==== ${run_name} ===="
     echo ""
 
+    # `--artifacts-dir` and `--apc-candidates-dir` are shared across all
+    # `run_bench` calls with the same (guest, profile-input). For cell PGO
+    # the generate stage doesn't depend on `--autoprecompiles`, so sweeping
+    # `apcs` (apc010, apc030, apc100, …) hits the generate-stage cache from
+    # the second call onward — only the cheap select+setup stages re-run.
+    # `--apc-candidates-dir` has to be shared too because it lives in the
+    # generate-stage hash; if each run wrote to a different dir the cache
+    # would invalidate.
+    cache_root=".bench-cache/${guest}-input${input}"
+    artifacts_dir="${cache_root}/artifacts"
+    candidates_dir="${cache_root}/candidates"
+    mkdir -p "${candidates_dir}"
+
     mkdir -p "${run_name}"
+
+    # Time the APC generation stage on its own and record it as
+    # `apc_generation_time_s.txt`. `generate-apcs` shares the generate-stage
+    # cache with the `prove` below (same guest, profile-input, pgo=cell default,
+    # artifacts/candidates dirs), so this warms the cache rather than duplicating
+    # work.
+    #
+    # We time this at most once per (guest, profile-input): under cell PGO the
+    # generate stage is independent of the APC count, so sweeping the same guest
+    # across multiple counts (e.g. matmul apc003 then apc030) hits the cache from
+    # the second call onward — timing those hits would record a misleading ~0s.
+    # The recorded time is stored in the (unpublished) cache dir as a marker and
+    # copied into the run dir of the first `apcs > 0` run that computed it.
+    gen_time_file="${cache_root}/apc_generation_time_s.txt"
+    if [ "${apcs:-0}" -ne 0 ] && [ ! -f "${gen_time_file}" ]; then
+        # Build first, *untimed*, so binary compilation never counts toward the
+        # measured generation time (the following `cargo run` is then a no-op
+        # freshness check plus the actual generation work).
+        cargo build --bin powdr_openvm_riscv -r --features "${CARGO_FEATURES}"
+        gen_start=$SECONDS
+        cargo run --bin powdr_openvm_riscv -r --features "${CARGO_FEATURES}" -- \
+            --artifacts-dir "${artifacts_dir}" generate-apcs "$guest" \
+            --profile-input "$input" --apc-candidates-dir "${candidates_dir}"
+        echo "$((SECONDS - gen_start))" > "${gen_time_file}"
+        cp "${gen_time_file}" "${run_name}/apc_generation_time_s.txt"
+    fi
 
     psrecord --include-children --interval 1 \
         --log "${run_name}"/psrecord.csv \
         --log-format csv \
         --plot "${run_name}"/psrecord.png \
-        "cargo run --bin powdr_openvm_riscv -r --features metrics prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${run_name}\""
+        "cargo run --bin powdr_openvm_riscv -r --features ${CARGO_FEATURES} -- --artifacts-dir \"${artifacts_dir}\" prove \"$guest\" --profile-input \"$input\" --input \"$input\" --autoprecompiles \"$apcs\" --metrics \"${run_name}/metrics.json\" --recursion --apc-candidates-dir \"${candidates_dir}\""
 
     python3 "$SCRIPTS_DIR"/plot_trace_cells.py -o "${run_name}"/trace_cells.png "${run_name}"/metrics.json > "${run_name}"/trace_cells.txt
 
-    # apc_candidates.json is only available when apcs > 0
+    # apc_candidates.json is only available when apcs > 0. It lives in the
+    # shared candidates_dir, written on the first cache-miss run for this
+    # (guest, profile-input) pair.
     if [ "${apcs:-0}" -ne 0 ]; then
-        python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${run_name}"/apc_candidates.json --output "${run_name}"/effectiveness.png
+        cp "${candidates_dir}"/apc_candidates.json "${run_name}"/apc_candidates.json
+        python3 "$SCRIPTS_DIR"/../../autoprecompiles/scripts/plot_effectiveness.py "${candidates_dir}"/apc_candidates.json --output "${run_name}"/effectiveness.png
     fi
 
-    # Clean up some files that we don't want to to push.
-    rm -f "${run_name}"/apc_candidate_*
+    # Clean up per-block snapshot files we don't want to push.
+    # Use `find -delete` rather than `rm glob`: large guests emit thousands of
+    # `apc_candidate_*` files (e.g. ~7k blocks), and the expanded glob blows
+    # past ARG_MAX ("Argument list too long"). `apc_candidates.json` doesn't
+    # match `apc_candidate_*` (no `_` after `candidate`), so it's preserved.
+    find "${candidates_dir}" -maxdepth 1 -name 'apc_candidate_*' -delete
 }
 
 # TODO: Some benchmarks are currently disabled to keep the nightly run below 6h.

@@ -109,7 +109,7 @@ fn test_optimize() {
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        1734
+        1748
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
@@ -140,11 +140,11 @@ fn test_ecrecover() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        3730
+        3855
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        2314
+        2400
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
@@ -175,15 +175,15 @@ fn test_sha256() {
     // This cbor file above has the `is_valid` column removed, this is why the number below
     // might be one less than in other tests.
     expect![[r#"
-        12034
+        11903
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        9539
+        9567
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        3770
+        3194
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
@@ -214,21 +214,32 @@ fn test_single_div_nondet() {
         .filter(|s| s.contains("zero"))
         .join("\n");
     expect![[r#"
-        (zero_divisor_0 + r_zero_0) * (zero_divisor_0 + r_zero_0 - 1)
-        zero_divisor_0 * (zero_divisor_0 - 1)
-        zero_divisor_0 * (q__0_0 - 255)
-        zero_divisor_0 * (q__1_0 - 255)
-        zero_divisor_0 * (q__2_0 - 255)
-        zero_divisor_0 * (q__3_0 - 255)
-        (1 - zero_divisor_0) * ((c__0_0 + c__1_0 + c__2_0 + c__3_0) * c_sum_inv_0 - 1)
-        r_zero_0 * (r_zero_0 - 1)
-        (1 - (zero_divisor_0 + r_zero_0)) * ((r__0_0 + r__1_0 + r__2_0 + r__3_0) * r_sum_inv_0 - 1)
-        (q__0_0 + q__1_0 + q__2_0 + q__3_0) * ((1 - zero_divisor_0) * (q_sign_0 - sign_xor_0))
-        (q_sign_0 - sign_xor_0) * ((1 - zero_divisor_0) * q_sign_0)
-        (1 - (zero_divisor_0 + r_zero_0 + lt_marker__0_0 + lt_marker__1_0 + lt_marker__2_0)) * (zero_divisor_0 + r_zero_0 + lt_marker__0_0 + lt_marker__1_0 + lt_marker__2_0)
-        (1 - (zero_divisor_0 + r_zero_0 + lt_marker__0_0 + lt_marker__1_0 + lt_marker__2_0)) * (lt_diff_0 - (r_prime__3_0 * (2 * c_sign_0 - 1) + c__3_0 * (1 - 2 * c_sign_0)))
-        zero_divisor_0 * (c__0_0 + c__1_0 + c__2_0 + c__3_0)
-        r_zero_0 * (r__0_0 + r__1_0 + r__2_0 + r__3_0)"#]]
+        (zero_divisor_0 + r_zero_0) * (2013265920 + zero_divisor_0 + r_zero_0)
+        zero_divisor_0 * (2013265920 + zero_divisor_0)
+        zero_divisor_0 * c__0_0
+        zero_divisor_0 * (2013265666 + q__0_0)
+        zero_divisor_0 * c__1_0
+        zero_divisor_0 * (2013265666 + q__1_0)
+        zero_divisor_0 * c__2_0
+        zero_divisor_0 * (2013265666 + q__2_0)
+        zero_divisor_0 * c__3_0
+        zero_divisor_0 * (2013265666 + q__3_0)
+        (2013265920 + zero_divisor_0) * zero_divisor_0
+        (2013265920 + zero_divisor_0) * ((c__0_0 + c__1_0 + c__2_0 + c__3_0) * c_sum_inv_0 + 2013265920)
+        r_zero_0 * (2013265920 + r_zero_0)
+        r_zero_0 * r__0_0
+        r_zero_0 * r__1_0
+        r_zero_0 * r__2_0
+        r_zero_0 * r__3_0
+        (2013265920 + zero_divisor_0 + r_zero_0) * (zero_divisor_0 + r_zero_0)
+        (2013265920 + zero_divisor_0 + r_zero_0) * ((r__0_0 + r__1_0 + r__2_0 + r__3_0) * r_sum_inv_0 + 2013265920)
+        (q__0_0 + q__1_0 + q__2_0 + q__3_0) * ((2013265920 + zero_divisor_0) * (q_sign_0 + 2013265920 * sign_xor_0))
+        (q_sign_0 + 2013265920 * sign_xor_0) * ((2013265920 + zero_divisor_0) * q_sign_0)
+        (2013265920 + zero_divisor_0 + r_zero_0 + lt_marker__3_0) * (r_prime__3_0 * (2013265920 + 2 * c_sign_0) + c__3_0 * (1 + 2013265919 * c_sign_0))
+        (2013265920 + zero_divisor_0 + r_zero_0 + lt_marker__3_0 + lt_marker__2_0) * (r_prime__2_0 * (2013265920 + 2 * c_sign_0) + c__2_0 * (1 + 2013265919 * c_sign_0))
+        (2013265920 + zero_divisor_0 + r_zero_0 + lt_marker__3_0 + lt_marker__2_0 + lt_marker__1_0) * (r_prime__1_0 * (2013265920 + 2 * c_sign_0) + c__1_0 * (1 + 2013265919 * c_sign_0))
+        (2013265920 + zero_divisor_0 + r_zero_0 + lt_marker__3_0 + lt_marker__2_0 + lt_marker__1_0) * (zero_divisor_0 + r_zero_0 + lt_marker__3_0 + lt_marker__2_0 + lt_marker__1_0)
+        (2013265920 + zero_divisor_0 + r_zero_0 + lt_marker__3_0 + lt_marker__2_0 + lt_marker__1_0) * (lt_diff_0 + 2013265920 * (r_prime__0_0 * (2013265920 + 2 * c_sign_0) + c__0_0 * (1 + 2013265919 * c_sign_0)))"#]]
     .assert_eq(&algebraic_constraints_with_zero);
 
     expect![[r#"
@@ -240,7 +251,7 @@ fn test_single_div_nondet() {
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        44
+        52
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
@@ -267,15 +278,15 @@ fn test_optimize_reth_op() {
     .0;
 
     expect![[r#"
-        446
+        443
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
-        356
+        482
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        313
+        293
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }
@@ -308,7 +319,7 @@ fn wasm_register_reuse() {
     );
 
     expect![[r#"
-        32
+        30
     "#]]
     .assert_debug_eq(&machine.main_columns().count());
     expect![[r#"
@@ -316,7 +327,7 @@ fn wasm_register_reuse() {
     "#]]
     .assert_debug_eq(&machine.bus_interactions.len());
     expect![[r#"
-        14
+        8
     "#]]
     .assert_debug_eq(&machine.constraints.len());
 }

@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
 use std::hash::Hash;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, Serialize, Deserialize)]
 pub struct DegreeBound {
     pub identities: usize,
     pub bus_interactions: usize,
