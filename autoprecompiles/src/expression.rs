@@ -254,22 +254,17 @@ where
     }
 }
 
-/// Pre-compiled expression for fast per-row evaluation without recursive AST walking.
+/// Pre-compiled expression for fast per-row evaluation, avoiding a recursive AST walk.
 pub enum CompiledExpr<F> {
-    /// Expression is a compile-time constant. Zero cost per row.
+    /// A compile-time constant.
     Constant(F),
-    /// Expression is a single column read: `row[col_idx]`. One array access per row.
+    /// A single column read `row[i]`.
     DirectLoad(usize),
-    /// Expression is `constant + sum(coeff * row[col_idx]) + sum(coeff * row[a] * row[b])`.
-    /// Covers both linear (degree-1) and quadratic (degree-2) expressions.
-    /// Linear expressions have an empty `products` vec.
+    /// `constant + Σ coeff·row[i] + Σ coeff·row[a]·row[b]` (degree ≤ 2).
     Polynomial(Polynomial<F>),
 }
 
-/// Degree ≤ 2 is sufficient under the default powdr-openvm config:
-/// `DEFAULT_DEGREE_BOUND.bus_interactions = 2` (see `powdr_openvm::DEFAULT_DEGREE_BOUND`,
-/// derived from `openvm-stark-sdk::DEFAULT_APP_LOG_BLOWUP`). The cli-openvm-riscv
-/// binary never overrides it.
+/// Degree ≤ 2, sufficient under the default config (`DEFAULT_DEGREE_BOUND.bus_interactions == 2`).
 pub struct Polynomial<F> {
     pub constant: F,
     /// Linear terms: (col_idx, coefficient).
@@ -282,9 +277,7 @@ impl<F> CompiledExpr<F>
 where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy + PartialEq,
 {
-    /// Compile an expression at build time into a fast-eval form.
-    /// `id_to_idx` is a dense Vec indexed directly by poly ID.
-    /// `zero` and `one` are the field's additive and multiplicative identities.
+    /// Compile an expression into fast-eval form; `id_to_idx` maps poly ID to column index.
     pub fn compile(expr: &AlgebraicExpression<F>, id_to_idx: &[usize], zero: F, one: F) -> Self {
         let d = Self::decompose(expr, id_to_idx, zero, one);
         if d.linear.is_empty() && d.products.is_empty() {
@@ -461,7 +454,6 @@ where
     F: Add<Output = F> + Sub<Output = F> + Mul<Output = F> + Neg<Output = F> + Copy + PartialEq,
 {
     /// Compile all bus interactions from symbolic form.
-    /// `zero` and `one` are the field's additive and multiplicative identities.
     pub fn compile_all(
         interactions: &[SymbolicBusInteraction<F>],
         id_to_idx: &[usize],

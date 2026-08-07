@@ -156,15 +156,14 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
             .trace_meta
             .dummy_values(&dummy_trace_by_air_name, num_apc_calls);
 
-        // O1: dense Vec poly ID -> APC column index for O(1) lookups in the hot loop.
-        // Poly IDs may be sparse, so size to max_id + 1.
+        // Dense poly ID -> column index lookup for the row loop (poly IDs may be sparse).
         let poly_id_to_index = &self.trace_meta.apc_poly_id_to_index;
         let max_poly_id = poly_id_to_index.keys().last().copied().unwrap_or(0) as usize;
         let apc_poly_id_to_index: Vec<usize> = (0..=max_poly_id)
             .map(|id| poly_id_to_index.get(&(id as u64)).copied().unwrap_or(0))
             .collect();
 
-        // O2: compile bus interactions once before the hot loop.
+        // Compile bus interactions once, before the row loop.
         let compiled_interactions = {
             use powdr_autoprecompiles::expression::CompiledBusInteraction;
             CompiledBusInteraction::compile_all(
@@ -181,8 +180,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
         // go through the final table and fill in the values
         let periphery_real = &self.periphery.real;
         let periphery_bus_ids = &self.periphery.bus_ids;
-        // Hoist per-APC metadata out of `self` so the parallel closure captures only
-        // Sync locals (not `self`, whose config/chips are not Send/Sync).
+        // Borrow into locals so the parallel closure doesn't capture `self` (not Sync).
         let instructions = &self.cpu_meta.instructions;
         let columns_to_compute = &self.cpu_meta.columns_to_compute;
 
@@ -209,8 +207,7 @@ impl<ISA: OpenVmISA> PowdrTraceGeneratorCpu<ISA> {
                     row_slice[*target_index] = evaluate_computation_method(method, &dummy_rows);
                 }
 
-                // O2: evaluate bus interactions via compiled expressions.
-                // Periphery chips use AtomicU32 counters — thread-safe under par_chunks_mut.
+                // Replay bus interactions via the compiled expressions (periphery counters are atomic).
                 for ci in &compiled_interactions {
                     let mult = ci.mult.eval(row_slice);
                     periphery_real.apply(
