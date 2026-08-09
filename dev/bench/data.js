@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786233019273,
+  "lastUpdate": 1786319543717,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417587,6 +417587,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 39995142166,
             "range": "± 366629405",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "pengqima",
+            "username": "pengqima",
+            "email": "pengqima@outlook.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "5aa140d35a9cc8467be286fb44969cfbab3533bb",
+          "message": "fix(isa-utils): escape control characters in quoted strings (#3772)\n\n## Summary\n\n`powdr_isa_utils::quote` previously escaped backslashes and double\nquotes, but left control characters such as newlines, carriage returns,\nand tabs unchanged. That could produce quoted strings containing raw\ncontrol characters instead of escaped sequences.\n\nThis change extends `quote` to emit escaped forms for common control\ncharacters and unicode-style escapes for other control characters. It\nalso adds a regression test for newline, tab, and carriage return\nescaping.\n\n## Testing\n\n- `cargo fmt --check -p powdr-isa-utils`\n- `git diff --check`\n- `rustc --edition=2021 --test isa-utils/src/lib.rs` and ran\n`quote_escapes_control_characters`\n- Verified with a temporary copy of the old implementation that the\nregression test fails before this change\n\nSigned-off-by: pengqima <pengqima@outlook.com>",
+          "timestamp": "2026-08-06T11:50:18Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/5aa140d35a9cc8467be286fb44969cfbab3533bb"
+        },
+        "date": 1786319532708,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 15306998781,
+            "range": "± 466919445",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 41123037069,
+            "range": "± 204985363",
             "unit": "ns/iter"
           }
         ]
