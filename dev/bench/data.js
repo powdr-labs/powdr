@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786406191448,
+  "lastUpdate": 1786493087442,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417655,6 +417655,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 40786339565,
             "range": "± 642254517",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Steve Wang",
+            "username": "qwang98",
+            "email": "qian.wang.wg24@wharton.upenn.edu"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "55b9026c62a9a3927c1334ffe58b59fa3bacf8bc",
+          "message": "perf: optimize CPU APC trace generation (~3.2x) (#3816)\n\nBackground: this was plucked out of #3723, which combines 3\noptimizations. This PR has 2 of the 3 optimizations while achieving 3.2x\nout of 3.6x total possible speed up while reducing most of the diffs (so\nit has the greatest LoC per unit of speed up value). Note that 3.2x and\n3.6x are measured after merging in the latest main, so are the most up\nto date numbers.\n\n--- AI notes below ---\nSpeeds up CPU APC trace generation\n(`PowdrTraceGeneratorCpu::generate_witness`) by ~3.2x on keccak 10k\nhashes / APC=30 / mock (trace gen 39.8s → 12.5s).\n\nTwo changes to the bus-interaction replay loop, which dominates\ntrace-gen time:\n- **Indexed lookup**: `MappingRowEvaluator` now takes a `Vec<usize>`\nindexed directly by poly ID, replacing the per-access `BTreeMap<u64,\nusize>` lookup.\n- **Parallel row fill**: the per-row fill loop runs under\n`par_chunks_mut` (periphery histograms are already `AtomicU32`); per-APC\nmetadata is borrowed into locals so the closure stays `Send`/`Sync`.\n\nOutput-identical — mock prove passes with matching public values.",
+          "timestamp": "2026-08-10T08:57:13Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/55b9026c62a9a3927c1334ffe58b59fa3bacf8bc"
+        },
+        "date": 1786493077114,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 17441258339,
+            "range": "± 1404546453",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 39650792355,
+            "range": "± 851392332",
             "unit": "ns/iter"
           }
         ]
