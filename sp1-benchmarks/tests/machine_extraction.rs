@@ -1,6 +1,5 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
-use enum_map::Enum;
 use powdr_autoprecompiles::symbolic_machine::SymbolicMachine;
 use pretty_assertions::assert_eq;
 use sp1_core_executor::{Instruction, Opcode};
@@ -10,6 +9,36 @@ use sp1_core_machine::autoprecompiles::{
     instruction_handler::{try_instruction_type_to_air_id, InstructionType, Sp1InstructionHandler},
 };
 use sp1_primitives::SP1Field;
+
+/// One representative opcode per base instruction AIR. Opcodes sharing an AIR
+/// (e.g. `XOR`/`OR`/`AND` -> `Bitwise`) collapse when deduplicating below; the
+/// assertion in the test guards against a new AIR being added upstream without a
+/// representative here.
+const REPRESENTATIVE_OPCODES: &[Opcode] = &[
+    Opcode::ADD,  // Add
+    Opcode::ADDI, // Addi
+    Opcode::ADDW, // Addw
+    Opcode::SUB,  // Sub
+    Opcode::SUBW, // Subw
+    Opcode::XOR,  // Bitwise
+    Opcode::DIV,  // DivRem
+    Opcode::SLT,  // Lt
+    Opcode::MUL,  // Mul
+    Opcode::SLL,  // ShiftLeft
+    Opcode::SRL,  // ShiftRight
+    Opcode::BEQ,  // Branch
+    Opcode::JAL,  // Jal
+    Opcode::JALR, // Jalr
+    Opcode::LUI,  // UType
+    Opcode::LB,   // LoadByte
+    Opcode::LH,   // LoadHalf
+    Opcode::LW,   // LoadWord
+    Opcode::LD,   // LoadDouble
+    Opcode::SB,   // StoreByte
+    Opcode::SH,   // StoreHalf
+    Opcode::SW,   // StoreWord
+    Opcode::SD,   // StoreDouble
+];
 
 /// Snapshots the base SP1 instruction AIRs (before any autoprecompile synthesis).
 ///
@@ -21,22 +50,19 @@ fn extract_machines() {
     let handler = Sp1InstructionHandler::<SP1Field>::new();
 
     // Collect the unique instruction AIRs, keyed by their index in the handler (which is
-    // stable across runs), so that opcodes sharing an AIR (e.g. XOR/OR/AND) render once.
+    // stable across runs), so that opcodes sharing an AIR render once.
     let mut machines: BTreeMap<usize, (&'static str, &SymbolicMachine<SP1Field>)> = BTreeMap::new();
 
     let mut record = |instruction_type: InstructionType, instruction: Instruction| {
-        let Some(air_id) = try_instruction_type_to_air_id(instruction_type) else {
-            // Not an instruction AIR (e.g. ECALL, EBREAK, UNIMP).
-            return;
-        };
+        let air_id =
+            try_instruction_type_to_air_id(instruction_type).expect("no AIR for instruction type");
         let (idx, (machine, _stats)) = handler
             .get_instruction_air_and_stats(&Sp1Instruction::from(instruction))
-            .expect("instruction type maps to an AIR");
-        machines.entry(idx).or_insert((air_id.into(), machine));
+            .expect("no AIR for instruction type");
+        machines.entry(idx).or_insert((air_id.as_str(), machine));
     };
 
-    for i in 0..<Opcode as Enum>::LENGTH {
-        let opcode = <Opcode as Enum>::from_usize(i);
+    for &opcode in REPRESENTATIVE_OPCODES {
         // `op_a = 1` (i.e. not x0) so that loads map to their regular AIR rather than LoadX0.
         record(
             InstructionType::NonLoadX0(opcode),
@@ -47,6 +73,12 @@ fn extract_machines() {
     record(
         InstructionType::LoadX0,
         Instruction::new(Opcode::LD, 0, 0, 0, false, true),
+    );
+
+    assert_eq!(
+        machines.len(),
+        handler.air_count(),
+        "not every base instruction AIR has a representative in `REPRESENTATIVE_OPCODES`",
     );
 
     let bus_map = sp1_bus_map();

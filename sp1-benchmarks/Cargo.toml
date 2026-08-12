@@ -13,7 +13,6 @@ license = "MIT"
 [dependencies]
 
 [dev-dependencies]
-enum-map = "2.7"
 powdr-autoprecompiles = { path = "../autoprecompiles" }
 pretty_assertions = "1.4.1"
 sp1-core-executor = { git = "https://github.com/succinctlabs/sp1.git", branch = "powdr-labs/apc-air-and-executor" }
