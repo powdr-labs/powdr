@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 338853ea751a32473470c66687bd32ed2284cf60684f15940e139ce8815c8239 # shrinks to goldilocks = Candidate { expected: None, bytes: [27, 255, 255, 255, 255, 0, 0, 0, 1] }, bn254 = Candidate { expected: Some(Bn254Field { value: BigInt([0, 0, 0, 0]) }), bytes: [161, 101, 118, 97, 108, 117, 101, 88, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }, raw = []
