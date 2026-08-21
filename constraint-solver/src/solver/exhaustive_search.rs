@@ -5,9 +5,10 @@ use powdr_number::LargeInt;
 use crate::constraint_system::BusInteractionHandler;
 use crate::constraint_system::ConstraintRef;
 use crate::effect::Effect;
-use crate::grouped_expression::RangeConstraintProvider;
+use crate::grouped_expression::{GroupedExpression, RangeConstraintProvider};
 use crate::indexed_constraint_system::IndexedConstraintSystem;
 use crate::range_constraint::RangeConstraint;
+use crate::runtime_constant::RuntimeConstant;
 use crate::utils::{get_all_possible_assignments, has_few_possible_assignments};
 
 use std::collections::btree_map::Entry;
@@ -34,11 +35,18 @@ pub fn exhaustive_search_on_variable_set<T: FieldElement, V: Clone + Hash + Ord 
     range_constraints: impl RangeConstraintProvider<T, V> + Clone,
     bus_interaction_handler: &impl BusInteractionHandler<T>,
 ) -> Result<BTreeMap<V, RangeConstraint<T>>, Error> {
+    // The set of constraints to consider is the same for all assignments,
+    // so we prepare them only once, pre-computing everything that does not
+    // depend on the concrete assignment.
+    let prepared_constraints = constraint_system
+        .constraints_referencing_variables(variables.iter())
+        .map(|constraint| PreparedConstraint::new(constraint, variables, &range_constraints))
+        .collect_vec();
     let mut new_constraints =
         get_all_possible_assignments(variables.iter().cloned(), &range_constraints).filter_map(
             |assignments| {
                 derive_new_range_constraints(
-                    constraint_system,
+                    &prepared_constraints,
                     assignments,
                     &range_constraints,
                     bus_interaction_handler,
@@ -142,22 +150,191 @@ fn has_small_max_range_constraint_size<T: FieldElement, V: Clone + Ord>(
 /// The provided assignments lead to a contradiction in the constraint system.
 struct ContradictingConstraintError;
 
-/// Given a list of assignments of concrete values to variables, tries to derive
-/// new range constraints from them. To keep this function relatively fast,
-/// only tries to each algebraic or bus constraint it isolation.
-/// Fails if any of the assignments *directly* contradicts any of the constraints.
-/// Note that getting an OK(_) here does not mean that there is no contradiction, as
-/// this function only does one step of the derivation.
-fn derive_new_range_constraints<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
-    constraint_system: &IndexedConstraintSystem<T, V>,
-    assignments: BTreeMap<V, T>,
-    range_constraints: &impl RangeConstraintProvider<T, V>,
-    bus_interaction_handler: &impl BusInteractionHandler<T>,
-) -> Result<BTreeMap<V, RangeConstraint<T>>, ContradictingConstraintError> {
-    let effects = constraint_system
-        .constraints_referencing_variables(assignments.keys())
-        .map(|constraint| match constraint {
-            ConstraintRef::AlgebraicConstraint(identity) => {
+/// A constraint prepared for exhaustive search over a fixed set of variables:
+/// data that does not depend on the concrete assignment of those
+/// variables can be precomputed.
+enum PreparedConstraint<'a, T: FieldElement, V> {
+    /// An algebraic constraint all of whose variables are search variables:
+    /// can just be evaluated.
+    FullyDetermined(&'a GroupedExpression<T, V>),
+    /// An affine algebraic constraint with at least one non-search variable.
+    /// The range constraint of the remaining terms can be precomputed.
+    Affine(PreparedAffineConstraint<'a, T, V>),
+    /// Any other constraint: cloned, substituted and solved per assignment.
+    Generic(ConstraintRef<'a, T, V>),
+}
+
+/// See [`PreparedConstraint::Affine`].
+struct PreparedAffineConstraint<'a, T: FieldElement, V> {
+    /// The coefficient of each search variable in the constraint (zero for
+    /// variables that do not occur), in sorted search-variable order.
+    search_var_coefficients: Vec<T>,
+    /// The constant offset of the constraint (before assignment).
+    constant_offset: T,
+    /// The sum of the range constraints of the non-search terms.
+    remaining_range_constraint: RangeConstraint<T>,
+    /// The precomputed data to solve for the non-search variables.
+    remaining: RemainingVariablesPrecompute<'a, T, V>,
+}
+
+/// The non-search variables of a [`PreparedAffineConstraint`], together with
+/// precomputed data to solve for them. There is at least one such variable,
+/// as constraints without one are handled by
+/// [`PreparedConstraint::FullyDetermined`].
+enum RemainingVariablesPrecompute<'a, T: FieldElement, V> {
+    /// A single remaining variable with the negated inverse of its coefficient.
+    Single { variable: &'a V, coeff_factor: T },
+    /// More than one remaining variable. For each remaining variable `x_j`,
+    /// in linear component order: the variable, the negated inverse of its coefficient and the
+    /// sum of the range constraints of the other remaining terms scaled by it.
+    Multiple {
+        var_precomputes: Vec<(&'a V, T, RangeConstraint<T>)>,
+    },
+}
+
+impl<'a, T: FieldElement, V: Clone + Hash + Ord + Eq + Display> PreparedConstraint<'a, T, V> {
+    fn new(
+        constraint: ConstraintRef<'a, T, V>,
+        variables: &BTreeSet<V>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Self {
+        match constraint {
+            ConstraintRef::AlgebraicConstraint(identity)
+                if identity
+                    .expression
+                    .referenced_unknown_variables()
+                    .all(|v| variables.contains(v)) =>
+            {
+                PreparedConstraint::FullyDetermined(identity.expression)
+            }
+            ConstraintRef::AlgebraicConstraint(identity) if identity.expression.is_affine() => {
+                let expr = identity.expression;
+                let search_var_coefficients = variables
+                    .iter()
+                    .map(|v| {
+                        expr.coefficient_of_variable_in_affine_part(v)
+                            .copied()
+                            .unwrap_or_else(T::zero)
+                    })
+                    .collect_vec();
+                let remaining_terms = expr
+                    .linear_components()
+                    .filter(|(v, _)| !variables.contains(v))
+                    .map(|(v, coeff)| (v, *coeff))
+                    .collect_vec();
+                assert!(!remaining_terms.is_empty());
+                let variable_rcs = remaining_terms
+                    .iter()
+                    .map(|(v, _)| range_constraints.get(v))
+                    .collect_vec();
+                let remaining_range_constraint = remaining_terms
+                    .iter()
+                    .zip(&variable_rcs)
+                    .map(|((_, coeff), rc)| rc.combine_product(&coeff.range_constraint()))
+                    .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
+                    .unwrap();
+                let remaining = match remaining_terms.as_slice() {
+                    [(variable, coeff)] => RemainingVariablesPrecompute::Single {
+                        variable: *variable,
+                        coeff_factor: -coeff.field_inverse(),
+                    },
+                    _ => RemainingVariablesPrecompute::Multiple {
+                        var_precomputes: remaining_terms
+                            .iter()
+                            .enumerate()
+                            .map(|(j, (variable, coeff))| {
+                                let factor = -coeff.field_inverse();
+                                let prefix = remaining_terms
+                                    .iter()
+                                    .zip(&variable_rcs)
+                                    .enumerate()
+                                    .filter(|(i, _)| *i != j)
+                                    .map(|(_, ((_, c), var_rc))| {
+                                        var_rc.combine_product(&(*c * factor).range_constraint())
+                                    })
+                                    .reduce(|rc1, rc2| rc1.combine_sum(&rc2))
+                                    .unwrap();
+                                (*variable, factor, prefix)
+                            })
+                            .collect_vec(),
+                    },
+                };
+                PreparedConstraint::Affine(PreparedAffineConstraint {
+                    search_var_coefficients,
+                    constant_offset: *expr.constant_offset(),
+                    remaining_range_constraint,
+                    remaining,
+                })
+            }
+            _ => PreparedConstraint::Generic(constraint),
+        }
+    }
+
+    /// Computes the effects of solving the constraint after assigning concrete
+    /// values to the search variables. The result is identical to substituting
+    /// the values and solving the constraint.
+    fn derive_effects(
+        &self,
+        assignments: &BTreeMap<V, T>,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+        bus_interaction_handler: &impl BusInteractionHandler<T>,
+    ) -> Result<Vec<Effect<T, V>>, ContradictingConstraintError> {
+        match self {
+            PreparedConstraint::Affine(prepared) => {
+                let constant = prepared
+                    .search_var_coefficients
+                    .iter()
+                    .zip(assignments.values())
+                    .fold(prepared.constant_offset, |acc, (coeff, value)| {
+                        acc + *coeff * *value
+                    });
+                // Check satisfiability, like `AlgebraicConstraint::solve` does.
+                let full_rc = prepared
+                    .remaining_range_constraint
+                    .combine_sum(&constant.range_constraint());
+                if !full_rc.allows_value(T::zero()) {
+                    return Err(ContradictingConstraintError);
+                }
+                match &prepared.remaining {
+                    // A single unknown variable left: solve for it.
+                    RemainingVariablesPrecompute::Single {
+                        variable,
+                        coeff_factor,
+                    } => {
+                        let value = constant * *coeff_factor;
+                        if range_constraints
+                            .get(variable)
+                            .is_disjoint(&value.range_constraint())
+                        {
+                            return Err(ContradictingConstraintError);
+                        }
+                        Ok(vec![Effect::Assignment((*variable).clone(), value)])
+                    }
+                    // Multiple unknown variables: transfer range constraints.
+                    RemainingVariablesPrecompute::Multiple { var_precomputes } => {
+                        Ok(var_precomputes
+                            .iter()
+                            .filter_map(|(variable, factor, prefix)| {
+                                let rc =
+                                    prefix.combine_sum(&(constant * *factor).range_constraint());
+                                (!rc.is_unconstrained())
+                                    .then(|| Effect::RangeConstraint((*variable).clone(), rc))
+                            })
+                            .collect())
+                    }
+                }
+            }
+            PreparedConstraint::FullyDetermined(expr) => {
+                // The constraint becomes fully known under the assignment:
+                // if it evaluates to a non-zero value, the assignment is
+                // contradictory, otherwise there is nothing to derive.
+                let value = expr.evaluate_assignment(&mut |v| assignments[v]);
+                if !value.is_zero() {
+                    return Err(ContradictingConstraintError);
+                }
+                Ok(vec![])
+            }
+            PreparedConstraint::Generic(ConstraintRef::AlgebraicConstraint(identity)) => {
                 let mut identity = identity.cloned();
                 for (variable, value) in assignments.iter() {
                     identity.substitute_by_known(variable, value);
@@ -168,8 +345,8 @@ fn derive_new_range_constraints<T: FieldElement, V: Clone + Hash + Ord + Eq + Di
                     .map(|result| result.effects)
                     .map_err(|_| ContradictingConstraintError)
             }
-            ConstraintRef::BusInteraction(bus_interaction) => {
-                let mut bus_interaction = bus_interaction.clone();
+            PreparedConstraint::Generic(ConstraintRef::BusInteraction(bus_interaction)) => {
+                let mut bus_interaction = (*bus_interaction).clone();
                 for (variable, value) in assignments.iter() {
                     bus_interaction
                         .fields_mut()
@@ -179,6 +356,26 @@ fn derive_new_range_constraints<T: FieldElement, V: Clone + Hash + Ord + Eq + Di
                     .solve(bus_interaction_handler, range_constraints)
                     .map_err(|_| ContradictingConstraintError)
             }
+        }
+    }
+}
+
+/// Given a list of assignments of concrete values to variables, tries to derive
+/// new range constraints from them. To keep this function relatively fast,
+/// only tries each algebraic or bus constraint in isolation.
+/// Fails if any of the assignments *directly* contradicts any of the constraints.
+/// Note that getting an OK(_) here does not mean that there is no contradiction, as
+/// this function only does one step of the derivation.
+fn derive_new_range_constraints<T: FieldElement, V: Clone + Hash + Ord + Eq + Display>(
+    constraints: &[PreparedConstraint<T, V>],
+    assignments: BTreeMap<V, T>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+    bus_interaction_handler: &impl BusInteractionHandler<T>,
+) -> Result<BTreeMap<V, RangeConstraint<T>>, ContradictingConstraintError> {
+    let effects = constraints
+        .iter()
+        .map(|constraint| {
+            constraint.derive_effects(&assignments, range_constraints, bus_interaction_handler)
         })
         // Early return if any constraint leads to a contradiction.
         .collect::<Result<Vec<_>, _>>()?;
@@ -216,4 +413,138 @@ fn derive_new_range_constraints<T: FieldElement, V: Clone + Hash + Ord + Eq + Di
             }
             Ok(map)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use powdr_number::GoldilocksField;
+
+    use crate::algebraic_constraint::AlgebraicConstraint;
+    use crate::bus_interaction_handler::DefaultBusInteractionHandler;
+
+    use super::*;
+
+    type Qse = GroupedExpression<GoldilocksField, &'static str>;
+
+    fn var(name: &'static str) -> Qse {
+        Qse::from_unknown_variable(name)
+    }
+
+    fn constant(value: u64) -> Qse {
+        Qse::from_number(GoldilocksField::from(value))
+    }
+
+    fn range(min: u64, max: u64) -> RangeConstraint<GoldilocksField> {
+        RangeConstraint::from_range(min.into(), max.into())
+    }
+
+    fn format_result(result: &Result<Vec<Effect<GoldilocksField, &'static str>>, ()>) -> String {
+        match result {
+            Err(()) => "<contradiction>".to_string(),
+            Ok(effects) => effects
+                .iter()
+                .map(|effect| match effect {
+                    Effect::Assignment(v, value) => format!("{v} = {value}"),
+                    Effect::RangeConstraint(v, rc) => format!("{v}: {rc}"),
+                    _ => "<other effect>".to_string(),
+                })
+                .join(", "),
+        }
+    }
+
+    /// Asserts that, for every possible assignment of `variables`, the
+    /// prepared version of the constraint `expr = 0` derives exactly the
+    /// same effects as substituting the assignment and solving the
+    /// constraint (the `Generic` path).
+    fn assert_parity_with_generic(
+        expr: &Qse,
+        variables: &BTreeSet<&'static str>,
+        range_constraints: &HashMap<&'static str, RangeConstraint<GoldilocksField>>,
+    ) {
+        let prepared = PreparedConstraint::new(
+            ConstraintRef::AlgebraicConstraint(AlgebraicConstraint::assert_zero(expr)),
+            variables,
+            range_constraints,
+        );
+        assert!(
+            !matches!(prepared, PreparedConstraint::Generic(_)),
+            "expected the constraint to be prepared via a fast path"
+        );
+        let generic: PreparedConstraint<GoldilocksField, &'static str> =
+            PreparedConstraint::Generic(ConstraintRef::AlgebraicConstraint(
+                AlgebraicConstraint::assert_zero(expr),
+            ));
+        let bus_interaction_handler = DefaultBusInteractionHandler::default();
+        for assignments in
+            get_all_possible_assignments(variables.iter().cloned(), range_constraints)
+        {
+            let fast = prepared
+                .derive_effects(&assignments, range_constraints, &bus_interaction_handler)
+                .map_err(|_| ());
+            let slow = generic
+                .derive_effects(&assignments, range_constraints, &bus_interaction_handler)
+                .map_err(|_| ());
+            assert!(
+                fast == slow,
+                "prepared constraint diverges from substitute-and-solve for {assignments:?}:\n  prepared: {}\n  solved:   {}",
+                format_result(&fast),
+                format_result(&slow),
+            );
+        }
+    }
+
+    #[test]
+    fn affine_single_remaining_variable() {
+        // Searching over {a, b, c} solves for x. `c` does not occur in the
+        // constraint. Some assignments make the constraint unsatisfiable or
+        // solve x to an out-of-range value, so the contradiction cases are
+        // exercised as well.
+        let expr = var("a") + constant(2) * var("b") + var("x") - constant(5);
+        let variables = BTreeSet::from(["a", "b", "c"]);
+        let range_constraints = HashMap::from([
+            ("a", range(0, 1)),
+            ("b", range(0, 3)),
+            ("c", range(0, 1)),
+            ("x", range(0, 4)),
+        ]);
+        assert_parity_with_generic(&expr, &variables, &range_constraints);
+    }
+
+    #[test]
+    fn affine_multiple_remaining_variables() {
+        // Searching over {a, b} transfers range constraints to x, y and z.
+        let expr = var("a") + var("b") + constant(3) * var("x") + constant(7) * var("y") + var("z")
+            - constant(20);
+        let variables = BTreeSet::from(["a", "b"]);
+        let range_constraints = HashMap::from([
+            ("a", range(0, 1)),
+            ("b", range(0, 3)),
+            ("x", RangeConstraint::from_mask(0x3u32)),
+            ("y", RangeConstraint::from_mask(0x7u32)),
+            ("z", range(0, 10)),
+        ]);
+        assert_parity_with_generic(&expr, &variables, &range_constraints);
+    }
+
+    #[test]
+    fn fully_determined_affine() {
+        // All variables are search variables: the constraint just checks
+        // the assignment (only a + b == 2 is satisfiable).
+        let expr = var("a") + var("b") - constant(2);
+        let variables = BTreeSet::from(["a", "b"]);
+        let range_constraints = HashMap::from([("a", range(0, 1)), ("b", range(0, 3))]);
+        assert_parity_with_generic(&expr, &variables, &range_constraints);
+    }
+
+    #[test]
+    fn fully_determined_quadratic() {
+        // All variables are search variables in a quadratic constraint
+        // (only a * b == 1 is satisfiable).
+        let expr = var("a") * var("b") - constant(1);
+        let variables = BTreeSet::from(["a", "b"]);
+        let range_constraints = HashMap::from([("a", range(0, 1)), ("b", range(0, 3))]);
+        assert_parity_with_generic(&expr, &variables, &range_constraints);
+    }
 }
