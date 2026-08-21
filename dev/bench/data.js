@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787269634452,
+  "lastUpdate": 1787355861241,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -417995,6 +417995,40 @@ window.BENCHMARK_DATA = {
             "name": "optimize-wasm-reth-apc/optimize",
             "value": 40341991174,
             "range": "± 268365570",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Georg Wiese",
+            "username": "georgwiese",
+            "email": "georgwiese@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "c1c3e99bb3d8d5e8e7cd3e85b9880d29622895b5",
+          "message": "Add SP1 base-machine constraints snapshot test (#3819)\n\n## What\n\nAdds the SP1 analog of\n[`openvm-riscv/tests/openvm_constraints.txt`](openvm-riscv/tests/openvm_constraints.txt):\na snapshot test that renders every base **instruction AIR** held by the\n`Sp1InstructionHandler` (i.e. before autoprecompile synthesis), keyed by\nits `RiscvAirId`.\n\nThe OpenVM snapshot contains exactly the instruction executor AIRs (ALU,\nShift, Branch, Load/Store, Mul, …) — no memory/range chips — so this\ntest targets the same set: the 24 unique base instruction machines.\n\n## How\n\n`Sp1InstructionHandler::airs()` is `#[cfg(test)]` and therefore\ninvisible to `sp1-benchmarks` as a dependency. Instead the test:\n\n1. Enumerates every `Opcode` (via `enum-map`, already a transitive dep).\n2. Filters to instruction AIRs using the public\n`try_instruction_type_to_air_id`.\n3. Fetches each machine through the public\n`get_instruction_air_and_stats`.\n4. Dedups by AIR index (so e.g. `XOR`/`OR`/`AND` collapse to one\n`Bitwise` entry), plus the dedicated `LoadX0` AIR.\n5. Renders each with `sp1_bus_map()`.\n\nThis stays entirely within the powdr repo and on the currently-pinned\nsp1 commit — no sp1 changes required.\n\n## Notes\n\n- Follows the existing `sp1-benchmarks` snapshot convention: regenerate\nwith `UPDATE_EXPECT=1` (or delete the file) and re-run.\n- The snapshot reflects the pinned sp1 commit; bumping the sp1\ndependency may require regenerating it.\n\n## Testing\n\n- `cargo test --release --test machine_extraction -p sp1-benchmarks` ✅\n- `cargo fmt` / `cargo clippy` clean\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n---------\n\nCo-authored-by: Claude Opus 4.8 <noreply@anthropic.com>",
+          "timestamp": "2026-08-12T09:46:29Z",
+          "url": "https://github.com/powdr-labs/powdr/commit/c1c3e99bb3d8d5e8e7cd3e85b9880d29622895b5"
+        },
+        "date": 1787355850794,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "optimize-keccak/optimize",
+            "value": 16374539052,
+            "range": "± 165566173",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "optimize-wasm-reth-apc/optimize",
+            "value": 38690243344,
+            "range": "± 986588730",
             "unit": "ns/iter"
           }
         ]
