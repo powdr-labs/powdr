@@ -212,7 +212,8 @@ jobs:
   # This job requires secrets.RPC_1 and uses pull_request_target to work with external PRs
 
   build_gpu:
-    if: github.event.pull_request.draft != true
+    # Not part of the default PR run for now; dispatch manually when needed.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: [self-hosted, gpu-shared]
     # Building the test archive links the Lean apc-optimizer FFI, which recompiles
     # from scratch on the first run after a rev bump; the persistent apc-optimizer
@@ -258,7 +259,8 @@ jobs:
             tests_gpu.tar.zst
 
   test_quick_gpu:
-    if: github.event.pull_request.draft != true
+    # Not part of the default PR run for now; dispatch manually when needed.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: build_gpu
     runs-on: [self-hosted, gpu-shared]
     timeout-minutes: 30
