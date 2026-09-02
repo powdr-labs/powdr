@@ -12,6 +12,8 @@ env:
 
 jobs:
   bench:
+    # Not part of the scheduled run for now; dispatch manually when needed.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: warp-ubuntu-2404-x64-4x
     permissions:
       contents: write
@@ -80,6 +82,8 @@ jobs:
 
   test_apc_guest:
     needs: resolve_apc_optimizer_rev
+    # Not part of the scheduled run for now; dispatch manually when needed.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: server-dev
     # Route APC generation through the Lean4 apc-optimizer (linked into the
     # `powdr_openvm_riscv` binary via the `lean-optimizer` feature and selected at
@@ -165,6 +169,8 @@ jobs:
   # bench-results.
   test_apc_reth:
     needs: resolve_apc_optimizer_rev
+    # Not part of the scheduled run for now; dispatch manually when needed.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: server-dev
 
     outputs:
