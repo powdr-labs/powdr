@@ -30,17 +30,6 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
-      # Anonymous fetches of public github.com repos (cargo git dependencies and
-      # their submodules) intermittently get a 401 from the shared runner IPs,
-      # which git reports as "could not read Username". Send the workflow token
-      # with them so they count as authenticated, the same way actions/checkout
-      # does for this repository.
-      - name: Authenticate github.com fetches
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          AUTH=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)
-          git config --global http.https://github.com/.extraheader "Authorization: Basic $AUTH"
       - name: ⚡ Restore rust cache
         id: cache
         uses: WarpBuilds/cache/restore@v1
@@ -167,17 +156,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      # Anonymous fetches of public github.com repos (cargo git dependencies and
-      # their submodules) intermittently get a 401 from the shared runner IPs,
-      # which git reports as "could not read Username". Send the workflow token
-      # with them so they count as authenticated, the same way actions/checkout
-      # does for this repository.
-      - name: Authenticate github.com fetches
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          AUTH=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)
-          git config --global http.https://github.com/.extraheader "Authorization: Basic $AUTH"
       - name: ⚡ Rust cache (sp1-benchmarks)
         uses: WarpBuilds/cache@v1
         with:
