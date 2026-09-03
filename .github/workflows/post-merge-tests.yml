@@ -1,12 +1,13 @@
 name: Post-merge APC tests
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "**.rs"
-      - "**.toml"
+  # Automatic post-merge run disabled for now; dispatch manually when needed.
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "**.rs"
+  #     - "**.toml"
 
 env:
   CARGO_TERM_COLOR: always

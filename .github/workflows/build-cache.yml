@@ -1,8 +1,10 @@
 name: Generate rust cache for PR builds
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * *' # run at 2 AM UTC
+  # Scheduled run disabled for now; use workflow_dispatch when the shared PR
+  # cache needs a refresh.
+  # schedule:
+  #   - cron: '0 2 * * *' # run at 2 AM UTC
 
 env:
     CARGO_TERM_COLOR: always

@@ -1,8 +1,10 @@
 name: Nightly tests
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 23 * * *" # run at 11pm UTC
+  # Scheduled run disabled for now; dispatch manually when a full nightly is
+  # wanted.
+  # schedule:
+  #   - cron: "0 23 * * *" # run at 11pm UTC
 
 env:
   CARGO_TERM_COLOR: always
