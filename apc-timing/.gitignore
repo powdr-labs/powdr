@@ -1,0 +1,6 @@
+# Intermediate artifacts of compare_apc_optimizers.sh — only the final report is committed.
+dump/
+benchmarks.json
+benchmarks_all.json
+openvm_eth_version.txt
+apc_optimizer_timing_guests.json

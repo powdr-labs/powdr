@@ -56,6 +56,29 @@ enum Commands {
 
     /// Generate a STARK proof for the guest, optionally with recursion.
     Prove(ProveArgs),
+
+    /// Benchmark the Rust vs. Lean APC optimizers over previously dumped input circuits.
+    ///
+    /// Reads the `.cbor` input-circuit dumps under `<dump-dir>/<benchmark>/` (produced by running
+    /// `generate-apcs` with `POWDR_APC_DUMP_DIR` set), re-runs both optimizers on each circuit, and
+    /// writes a JSON report. Requires the `lean-optimizer` feature.
+    TimeOptimizers(TimeOptimizersArgs),
+}
+
+/// Args for the `time-optimizers` optimizer-comparison benchmark.
+#[derive(Args, Clone, Debug)]
+struct TimeOptimizersArgs {
+    /// Directory holding one subdirectory per benchmark, each with `.cbor` input-circuit dumps.
+    dump_dir: PathBuf,
+
+    /// Path to write the JSON timing report to.
+    #[arg(long)]
+    output: PathBuf,
+
+    /// How many circuits to time concurrently. Fixed rather than machine-derived so the load the
+    /// runtimes carry is the same from run to run; defaults to 24.
+    #[arg(long)]
+    threads: Option<usize>,
 }
 
 /// Args for the profiling stage.
@@ -299,6 +322,20 @@ fn run_command(command: Commands, artifacts_dir: Option<PathBuf>) {
                 );
             } else {
                 run();
+            }
+        }
+
+        Commands::TimeOptimizers(args) => {
+            #[cfg(feature = "lean-optimizer")]
+            powdr_openvm::optimizer_timing::time_optimizers(
+                &args.dump_dir,
+                &args.output,
+                args.threads,
+            );
+            #[cfg(not(feature = "lean-optimizer"))]
+            {
+                let _ = &args;
+                panic!("`time-optimizers` requires building with the `lean-optimizer` feature");
             }
         }
     }

@@ -35,6 +35,10 @@ use crate::{
 #[derive(Debug)]
 pub enum Error {
     ConstraintSolverError(powdr_constraint_solver::solver::Error),
+    /// Not a real optimization failure: `build` ran in input-dump mode (`POWDR_APC_DUMP_DIR`),
+    /// serialized the pre-optimization circuit, and skipped optimization. Callers should drop the
+    /// candidate (Cell PGO does, via `.ok()?`).
+    InputDumpOnly,
 }
 
 impl From<powdr_constraint_solver::solver::Error> for Error {
