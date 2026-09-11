@@ -22,7 +22,7 @@ use std::process::Command;
 /// override it at build time with the `APC_OPTIMIZER_REV` env var (CI pins this to the latest
 /// apc-optimizer `main`).
 const APC_OPTIMIZER_REPO: &str = "https://github.com/powdr-labs/apc-optimizer.git";
-const APC_OPTIMIZER_REV: &str = "0269fd80dd26a5f368ea3f5bdeb24a5c9a310733";
+const APC_OPTIMIZER_REV: &str = "c44ba82d4b00ac96b749d480c0627cd7bc8b36e0";
 
 /// The apc-optimizer commit to build against: the `APC_OPTIMIZER_REV` env var if set, else the
 /// vendored [`APC_OPTIMIZER_REV`] default above.
